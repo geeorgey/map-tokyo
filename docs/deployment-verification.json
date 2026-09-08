@@ -1,13 +1,30 @@
 {
   "url": "https://train.lvnsk.jp/",
-  "version_id": "afea7408-bd6c-4373-a033-b1a95cff3152",
-  "verified_at": "2026-09-08T01:28:18.856240+00:00",
-  "feature": "光の移ろい — automatic daylight cycle",
+  "version_id": "e369eac3-f0d9-4ba8-9880-b0538c809921",
+  "source_commit": "b59cbfff97cb2f3e46f013644c7b8824a4fbcd9b",
+  "verified_at": "2026-09-08T08:26:20.254733+00:00",
+  "features": [
+    "JST real-time clock and date seek",
+    "official timetable departures",
+    "automatic daylight cycle"
+  ],
   "assets": [
     {
       "file": "index.html",
       "bytes": 582,
-      "sha256": "299d6e7c66fc6994897721c31bab6ca29e23b1a03c998566f3ce7b8c986f22fa",
+      "sha256": "a5edc95705ae684d7c717c01c0c7777783389fb2dce3c357190f6f0abbe7a040",
+      "match": true
+    },
+    {
+      "file": "release.json",
+      "bytes": 159,
+      "sha256": "c5d9fbc448e6dd9190cfaa492e1fcc9103180ea25b3f77b006a38ca101668037",
+      "match": true
+    },
+    {
+      "file": "data/timetable.json",
+      "bytes": 637525,
+      "sha256": "22fed5f9d1d02f0b9b16be0fc7d49ca12c9c7ccb44025d1389233b19f11209c8",
       "match": true
     },
     {
@@ -17,22 +34,48 @@
       "match": true
     },
     {
-      "file": "assets/index-0WNmOixs.js",
-      "bytes": 1494231,
-      "sha256": "1aad69c3c9e5cd6837a6c4bc6fa1f31722c374eb89ab9a090b12cb2256bbfc75",
+      "file": "assets/index-DsNvnSuT.css",
+      "bytes": 24015,
+      "sha256": "adcab2bb807cb75d9680da85cd7e8319e807cf05e42c1d48f2b459f51ee97aae",
       "match": true
     },
     {
-      "file": "assets/three-jpp0lhSp.js",
+      "file": "assets/index-jTUGYh8v.js",
+      "bytes": 1512117,
+      "sha256": "7dce2509a668c7b28b1e1adf89140f2ead2a3dc7f999468742519595c42748af",
+      "match": true
+    },
+    {
+      "file": "assets/three-COzIVbPy.js",
       "bytes": 525423,
-      "sha256": "17b2ed6ff37e536e3758df8f9114077f37ee6562f33b25f32a3e6dc0d673aa58",
-      "match": true
-    },
-    {
-      "file": "assets/index-CLMbPoUB.css",
-      "bytes": 13150,
-      "sha256": "d88ae97b656388ea95269f910c2a72fbe178efd35a32c493da7446f896a9b2b5",
+      "sha256": "b1f964c88488ae7ace96d2dd3e668664873990cc82d57f5d33eff204e5d7c4ba",
       "match": true
     }
-  ]
+  ],
+  "api_checks": [
+    {
+      "path": "api/station?month=2026-09&line=chuo&day=weekday",
+      "ok": true,
+      "rows": 295
+    },
+    {
+      "path": "api/calendars?month=2026-09&ids=100/102921",
+      "ok": true,
+      "dates_match_snapshot": true
+    },
+    {
+      "path": "api/holidays",
+      "ok": true,
+      "holiday": "2026-09-21",
+      "name": "敬老の日"
+    }
+  ],
+  "browser": {
+    "jst_clock_visible_and_ticking": true,
+    "next_departures_loaded": true,
+    "timetable_dialog_loaded": true,
+    "daylight_cycle_enabled": true,
+    "console_errors": []
+  },
+  "automated_tests_passed": 24
 }
