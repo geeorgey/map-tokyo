@@ -1,0 +1,33 @@
+{
+  "description": "Unmodified files from completed 2026-09-06 realtime implementation",
+  "archivedAt": "2026-09-08",
+  "sha256": {
+    ".gitignore": "de7efcdd8d619bbafca85d293ef09a52b43febd691b9b73db2c453d06cb67b3c",
+    ".nvmrc": "08062faf0d7a2d22f5d7933c50e975dd1527034275597be7c1b3b9fd2b9d079a",
+    "README.md": "1de53601125844b18e0c0bf6d9be46b42a7ce5c633cc76dc9813271b137e0ebb",
+    "package.json": "ea7a7e7fde83415eac7c0fbe62c70fecc68b824f5037feac245aa9affb754a28",
+    "package-lock.json": "1c3bcdceb40ceae07bccb5f5d1430c57073a951e1f936ee8a6b791b8268d2af8",
+    "wrangler.jsonc": "f27e4a19588278e9dc42b56a2548cd8ca4bf1d6ef8f3afde8481512c5bb0c422",
+    "public/_headers": "74f76bb89f7534c9360cd5320df8542b85d06ca9dff1e6dd87e6c290f01715d5",
+    "public/data/timetable.json": "ef420ec78c06bd232d63662adbc57d9b585e897239c807e26b6073933b66ca8b",
+    "scripts/build.mjs": "771e5815c32427c531ce4a3ed381d29426f90753a4dc446eaee487e3607d6133",
+    "scripts/import-timetable.mjs": "46ef7593fa708127b67c4d69d9dd5edf8ece4d3ab47ecdac4cb43b3b84d1e9ec",
+    "src/App.jsx": "b6e86b2af60964f7d6e50d611e20d97512e043e6a65a98010e482b475bd5435d",
+    "src/clock.mjs": "9dc23de2573f0f4073d4108c30da5750b4541c1736dfb923311be2d2c32bd78a",
+    "src/diorama.mjs": "99203b6f4e56e869a6aa6e99204eed0186029fc6bb921e05d07cb0ad4829d1e1",
+    "src/load-timetable.mjs": "8a2377227737873877b1d94edd066311f86b6ed45f5d7fbb109f580abadbb3d5",
+    "src/schedule.mjs": "0aaae95dc3aebe10a20efdfe58c1ef4747109edaf9dc9ab591b726f9f67fda07",
+    "src/style.css": "a1cc927582e93aa002bd808bd54871041f0b669e4429caa82f599fe7927fa1b0",
+    "src/timetable.mjs": "4ea5442a09479b9e059767de3660a97b7dbec3ab2b1de82223ccdffb40bc59bc",
+    "src/worker.mjs": "90e887e5b201794c991de227703cb4f50bee14ca14c1d85c98c38e35262ba85c",
+    "test/clock.test.mjs": "35b960089e457ecec519dbb76a4811ebad145659843508951ede051624d4f6a6",
+    "test/schedule.test.mjs": "82e6419c11d0618caee2879e1505c5ecd29ec9b8bf8b39e63a5dd7e28a8a6a92",
+    "vendor/deployed/assets/index-BDJqQfIL.js": "be0bad04605f368b143f64b2d9b4f141797c78026741a31e1b3a7413cb1a64ee",
+    "vendor/deployed/assets/index-ByugdiWY.css": "b8f7673d1382b50bf5d57de4a6ce520b7e1d71cc3e04ca4360d6ef0b713e7a5b",
+    "vendor/deployed/assets/react-B8yqMBYu.js": "c3dfb302971a96ecd05c20b8f0eba125d9f3f0449efd8f5324604af9a5353236",
+    "vendor/deployed/assets/three-BNfWprOi.js": "12085445c1ee8767b324c3d6f808442b3e4541cdab1129fa7eb31d034f4db188",
+    "vendor/deployed/index.html": "cb4012f31f00af25ac897328adcb9fb564fbafe4c17e936677d88097f4a050a2",
+    "vendor/deployed-manifest.json": "4db318e301437408ba20f0989910145ce475868114351ae80ddb0952f9d89402",
+    "vendor/scene-runtime.js": "4a93a9da4f4bf9f1262ff7801c7c1ba0091cab520555b3d4ce69999ae6a5fa31"
+  }
+}

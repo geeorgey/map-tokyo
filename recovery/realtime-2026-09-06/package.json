@@ -1,0 +1,17 @@
+{
+  "name": "tokyo-railway-diorama",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "timetable": "node scripts/import-timetable.mjs",
+    "dev": "npm run build && python3 -m http.server 4179 --bind 127.0.0.1 --directory dist",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "wrangler": "4.129.0"
+  }
+}

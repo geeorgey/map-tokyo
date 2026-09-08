@@ -1,0 +1,45 @@
+{
+  "retrievedAt": "2026-09-08",
+  "sources": [
+    {
+      "package": "react",
+      "version": "19.2.8",
+      "url": "https://registry.npmjs.org/react/-/react-19.2.8.tgz",
+      "tarballSha256": "94c6b9e0785854d2e5d9628cec05c33ed017b6a9002af5e8778d4134e9ada611",
+      "licenseFile": "react-19.2.8-LICENSE.txt",
+      "licenseSha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "package": "react-dom",
+      "version": "19.2.8",
+      "url": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz",
+      "tarballSha256": "1ffc99af594271b41835004a9b6789a832eacc5d153169f3bfbd1f76f9547dbb",
+      "licenseFile": "react-dom-19.2.8-LICENSE.txt",
+      "licenseSha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "package": "scheduler",
+      "version": "0.27.0",
+      "url": "https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz",
+      "tarballSha256": "ab26ce35ce4032f04b78cfc5bbb4cfe13358e9fe7a5433a8aa6315c3debc5095",
+      "licenseFile": "scheduler-0.27.0-LICENSE.txt",
+      "licenseSha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "package": "three",
+      "version": "0.180.0",
+      "url": "https://registry.npmjs.org/three/-/three-0.180.0.tgz",
+      "tarballSha256": "ad66d724565ee29a2467277fa84daa5ed0211d6b8d446e9ef29f6bae0cd14144",
+      "licenseFile": "three-0.180.0-LICENSE.txt",
+      "licenseSha256": "bfe119ea4fd413f5f7ca3fcd63adb0c4a073ed39daa2fe7d3e6b769e21272601"
+    },
+    {
+      "package": "lucide-react",
+      "version": "0.468.0",
+      "url": "https://registry.npmjs.org/lucide-react/-/lucide-react-0.468.0.tgz",
+      "tarballSha256": "2d28371e4c354765e6a2e47c23468fff1c65494b312e98e7713aff63079e891a",
+      "licenseFile": "lucide-react-0.468.0-LICENSE.txt",
+      "licenseSha256": "1e7290b35280a048667bbf0ebabac1c7fd52a75300e8b2946ac165715997f2bc"
+    }
+  ]
+}
