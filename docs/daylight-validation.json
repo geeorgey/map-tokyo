@@ -1,0 +1,38 @@
+{
+  "verified_at": "2026-09-08T01:27:54.846496+00:00",
+  "feature": "光の移ろい",
+  "cycle_seconds": 90,
+  "manual_transition_seconds": 1.8,
+  "unit_tests": {
+    "passed": 4,
+    "coverage": [
+      "full cycle and wrap continuity",
+      "freeze and resume at intermediate phase",
+      "manual override and interrupted transition",
+      "reduced-motion selection and bounded lighting"
+    ]
+  },
+  "browser_checks": [
+    "automatic day to evening to night lighting visibly rendered",
+    "follow camera and train pause remain independent",
+    "stopping cycle keeps intermediate lighting",
+    "manual day selection stops automatic cycle",
+    "390px viewport: no horizontal overflow or header overlap",
+    "no console errors"
+  ],
+  "mobile_controls": {
+    "viewport_width": 390,
+    "scroll_width": 390,
+    "cycle_button": {
+      "left": 228,
+      "right": 332,
+      "top": 64,
+      "bottom": 110
+    }
+  },
+  "limitations": [
+    "scenic interpolation of existing presets, not astronomical sun positions",
+    "cycle timing may slow on low frame rates or in background tabs",
+    "mobile layout verified with emulation, not a physical device"
+  ]
+}

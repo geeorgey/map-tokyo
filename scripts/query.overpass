@@ -1,0 +1,14 @@
+[out:json][timeout:90];
+(
+ way["building"](35.6725,139.752,35.6910,139.781);
+ way["building:part"](35.6725,139.752,35.6910,139.781);
+ way["highway"](35.6725,139.752,35.6910,139.781);
+ way["natural"="water"](35.6725,139.752,35.6910,139.781);
+ way["waterway"](35.6725,139.752,35.6910,139.781);
+ way["landuse"~"grass|forest"](35.6725,139.752,35.6910,139.781);
+ way["leisure"~"park|garden"](35.6725,139.752,35.6910,139.781);
+ way["railway"="rail"](35.6725,139.752,35.6910,139.781);
+ relation["type"="multipolygon"]["building"](35.6725,139.752,35.6910,139.781);
+ relation["type"="multipolygon"]["natural"="water"](35.6725,139.752,35.6910,139.781);
+);
+out tags geom;

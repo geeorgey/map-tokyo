@@ -1,0 +1,15 @@
+{
+  "date": "2026-09-06",
+  "camera_offset_m": [
+    -8,
+    80,
+    -24
+  ],
+  "tracked_train": "N700",
+  "track": "18",
+  "samples": 365,
+  "sample_spacing_m": 2,
+  "blocked_sightlines": 0,
+  "method": "Sightline intersection with mapped building footprints and heights across the tracked carriage route; automatic initial viewing angle only.",
+  "limitations": "User-changed angles may be occluded by buildings; map geometry and heights contain approximations."
+}

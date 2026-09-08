@@ -1,0 +1,38 @@
+{
+  "url": "https://train.lvnsk.jp/",
+  "version_id": "afea7408-bd6c-4373-a033-b1a95cff3152",
+  "verified_at": "2026-09-08T01:28:18.856240+00:00",
+  "feature": "光の移ろい — automatic daylight cycle",
+  "assets": [
+    {
+      "file": "index.html",
+      "bytes": 582,
+      "sha256": "299d6e7c66fc6994897721c31bab6ca29e23b1a03c998566f3ce7b8c986f22fa",
+      "match": true
+    },
+    {
+      "file": "assets/react-B8yqMBYu.js",
+      "bytes": 11322,
+      "sha256": "c3dfb302971a96ecd05c20b8f0eba125d9f3f0449efd8f5324604af9a5353236",
+      "match": true
+    },
+    {
+      "file": "assets/index-0WNmOixs.js",
+      "bytes": 1494231,
+      "sha256": "1aad69c3c9e5cd6837a6c4bc6fa1f31722c374eb89ab9a090b12cb2256bbfc75",
+      "match": true
+    },
+    {
+      "file": "assets/three-jpp0lhSp.js",
+      "bytes": 525423,
+      "sha256": "17b2ed6ff37e536e3758df8f9114077f37ee6562f33b25f32a3e6dc0d673aa58",
+      "match": true
+    },
+    {
+      "file": "assets/index-CLMbPoUB.css",
+      "bytes": 13150,
+      "sha256": "d88ae97b656388ea95269f910c2a72fbe178efd35a32c493da7446f896a9b2b5",
+      "match": true
+    }
+  ]
+}

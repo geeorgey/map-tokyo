@@ -1,0 +1,3 @@
+[out:json][timeout:90];
+(nwr["railway"="platform"](35.677,139.763,35.686,139.773);nwr["public_transport"="platform"]["train"="yes"](35.677,139.763,35.686,139.773);way["railway"="rail"](35.677,139.763,35.686,139.773););
+out body geom;
