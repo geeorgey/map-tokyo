@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import map from '../data/tokyo-map.json';
+import map from '../data/tokyo-map.json' with { type: 'json' };
 import { random } from './geometry.js';
 
 export { map };

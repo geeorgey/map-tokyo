@@ -1,0 +1,38 @@
+{
+  "verified_at": "2026-09-08T08:20:25.270922+00:00",
+  "tests_passed": 24,
+  "recovery_commit": "585756d90c8ccd1e1d31142adbb5d74cfff16b58",
+  "recovered_modules_byte_match": true,
+  "refreshed_timetable_matches_original_except_retrievedAt": true,
+  "browser": {
+    "date_seek": "2026-09-06 05:59:59 JST",
+    "before_departure": {
+      "status": "停車中",
+      "center": 219.92654751280097
+    },
+    "after_departure": {
+      "timestamp": "2026-09-06 06:00:30 JST",
+      "status": "発車",
+      "center": 458.2093045140407
+    },
+    "observed_60x_rate": 60.00332620574959,
+    "timetable_row_seek": true,
+    "follow_with_daylight": true,
+    "mobile": {
+      "width": 390,
+      "scroll_width": 390,
+      "clock_top": 124,
+      "clock_bottom": 243.09375
+    },
+    "console_errors": []
+  },
+  "local_apis": {
+    "station_rows": 295,
+    "calendar_matches": true,
+    "holiday_matches": true
+  },
+  "limits": [
+    "mobile viewport emulation only",
+    "scheduled departures, not live delay or position data"
+  ]
+}

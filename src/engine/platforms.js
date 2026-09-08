@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import data from '../data/tokyo-platforms.json';
+import data from '../data/tokyo-platforms.json' with { type: 'json' };
 import { shapeFromPolygon } from './urban.js';
 export { data as platformData };
 
