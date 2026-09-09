@@ -1,81 +1,65 @@
 {
   "url": "https://train.lvnsk.jp/",
-  "version_id": "e369eac3-f0d9-4ba8-9880-b0538c809921",
-  "source_commit": "b59cbfff97cb2f3e46f013644c7b8824a4fbcd9b",
-  "verified_at": "2026-09-08T08:26:20.254733+00:00",
-  "features": [
-    "JST real-time clock and date seek",
-    "official timetable departures",
-    "automatic daylight cycle"
-  ],
+  "version_id": "3f10c7a8-5c73-444c-b9a3-9a29bbcb5c7c",
+  "source_commit": "c99e4733853aedc42db211db828d7b0ff14fbd1c",
+  "verified_at": "2026-09-09T00:39:02.153716+00:00",
   "assets": [
     {
       "file": "index.html",
-      "bytes": 582,
-      "sha256": "a5edc95705ae684d7c717c01c0c7777783389fb2dce3c357190f6f0abbe7a040",
-      "match": true
+      "bytes": 1494,
+      "sha256": "b0c80e84e856758b0220a97248612377da1ff039a85a89fa25e43d24119c3d31",
+      "exact_match": true
     },
     {
       "file": "release.json",
       "bytes": 159,
-      "sha256": "c5d9fbc448e6dd9190cfaa492e1fcc9103180ea25b3f77b006a38ca101668037",
-      "match": true
+      "sha256": "5b6ddc69195d9ebb344d2f9dbd554f50b58652b9ea440a87518c6d73b16aed7c",
+      "exact_match": true
+    },
+    {
+      "file": "sitemap.xml",
+      "bytes": 166,
+      "sha256": "2335c5ba42f078046a8a9907c5e7898a0beb8d30e6a3e00df18d0f3d9015b600",
+      "exact_match": true
+    },
+    {
+      "file": "robots.txt",
+      "bytes": 1920,
+      "sha256": "553da6f04edd7badf57c886d9eb52619cada51e3d240d6c319665569b9b2aa0e",
+      "exact_match": false,
+      "origin_content_preserved": true,
+      "edge_addition": "Existing Cloudflare managed content signals and crawler rules precede the origin robots.txt."
     },
     {
       "file": "data/timetable.json",
       "bytes": 637525,
       "sha256": "22fed5f9d1d02f0b9b16be0fc7d49ca12c9c7ccb44025d1389233b19f11209c8",
-      "match": true
+      "exact_match": true
     },
     {
       "file": "assets/react-B8yqMBYu.js",
       "bytes": 11322,
       "sha256": "c3dfb302971a96ecd05c20b8f0eba125d9f3f0449efd8f5324604af9a5353236",
-      "match": true
+      "exact_match": true
     },
     {
       "file": "assets/index-DsNvnSuT.css",
       "bytes": 24015,
       "sha256": "adcab2bb807cb75d9680da85cd7e8319e807cf05e42c1d48f2b459f51ee97aae",
-      "match": true
+      "exact_match": true
     },
     {
       "file": "assets/index-jTUGYh8v.js",
       "bytes": 1512117,
       "sha256": "7dce2509a668c7b28b1e1adf89140f2ead2a3dc7f999468742519595c42748af",
-      "match": true
+      "exact_match": true
     },
     {
       "file": "assets/three-COzIVbPy.js",
       "bytes": 525423,
       "sha256": "b1f964c88488ae7ace96d2dd3e668664873990cc82d57f5d33eff204e5d7c4ba",
-      "match": true
+      "exact_match": true
     }
   ],
-  "api_checks": [
-    {
-      "path": "api/station?month=2026-09&line=chuo&day=weekday",
-      "ok": true,
-      "rows": 295
-    },
-    {
-      "path": "api/calendars?month=2026-09&ids=100/102921",
-      "ok": true,
-      "dates_match_snapshot": true
-    },
-    {
-      "path": "api/holidays",
-      "ok": true,
-      "holiday": "2026-09-21",
-      "name": "敬老の日"
-    }
-  ],
-  "browser": {
-    "jst_clock_visible_and_ticking": true,
-    "next_departures_loaded": true,
-    "timetable_dialog_loaded": true,
-    "daylight_cycle_enabled": true,
-    "console_errors": []
-  },
   "automated_tests_passed": 24
 }

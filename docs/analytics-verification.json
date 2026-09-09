@@ -1,0 +1,62 @@
+{
+  "verified_at": "2026-09-09T09:41:00+09:00",
+  "site": "https://train.lvnsk.jp/",
+  "source_commit": "c99e4733853aedc42db211db828d7b0ff14fbd1c",
+  "cloudflare_version_id": "3f10c7a8-5c73-444c-b9a3-9a29bbcb5c7c",
+  "ga4": {
+    "account_name": "LVNSK",
+    "account_id": "386743347",
+    "property_id": "553396987",
+    "stream_id": "15743581506",
+    "measurement_id": "G-DKM4M2PE9Q",
+    "time_zone": "Asia/Tokyo",
+    "currency": "JPY",
+    "enhanced_measurement": true,
+    "realtime_active_users": 1,
+    "realtime_page_title": "東京鉄道景 — Tokyo Railway Diorama",
+    "realtime_events_observed": ["first_visit", "page_view", "scroll", "session_start"]
+  },
+  "gtm": {
+    "account_name": "リバネスナレッジ",
+    "account_id": "6054886111",
+    "container_id": "263589093",
+    "public_id": "GTM-K7R2RWQC",
+    "published_version": "2",
+    "published_version_name": "Initial GA4 — train.lvnsk.jp",
+    "google_tag_id": "G-DKM4M2PE9Q",
+    "trigger": "Initialization - All Pages"
+  },
+  "search_console": {
+    "property": "https://train.lvnsk.jp/",
+    "verification_method": "HTML tag",
+    "ownership_verified": true,
+    "sitemap": "https://train.lvnsk.jp/sitemap.xml",
+    "sitemap_status": "成功しました",
+    "discovered_pages": 1,
+    "ga4_link_created": true
+  },
+  "production_browser": {
+    "gtm_script_instances": 1,
+    "gtm_http_status": 200,
+    "google_tag_http_status": 200,
+    "page_view_requests_on_reload": 1,
+    "page_view_http_status": 204,
+    "scroll_http_status": 204,
+    "noscript_is_first_body_element": true,
+    "verification_meta_present": true,
+    "canonical": "https://train.lvnsk.jp/",
+    "jst_clock_and_next_departures_visible": true,
+    "daylight_cycle_works": true,
+    "console_errors": []
+  },
+  "automated_tests_passed": 24,
+  "delivery": {
+    "exact_matching_files": 8,
+    "robots_txt_origin_preserved": true,
+    "robots_txt_edge_addition": "Existing Cloudflare managed content signals and crawler rules"
+  },
+  "limits": [
+    "GA standard reports and Search Console performance data need processing time.",
+    "Sitemap acceptance is not a guarantee that Google has indexed the page."
+  ]
+}
