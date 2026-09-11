@@ -1,5 +1,4 @@
 import { Viewer as DioramaBase } from './engine/viewer.js';
-import { Vector3 } from 'three';
 import { samplePolyline as sampleRoute } from './engine/urban.js';
 import { createEnvelope, trainState } from './schedule.mjs';
 
@@ -78,8 +77,7 @@ export class ScheduledDiorama extends DioramaBase {
       this.controls.target.lerpVectors(this.transition.targetFrom, this.transition.targetTo, easing);
       if (fraction === 1) this.transition = null;
     }
-    this.controls.update(delta);
-    this.controls.target.clamp(new Vector3(-730, 0, -840), new Vector3(710, 240, 850));
+    this.updateCamera(delta);
     const radius = this.camera.position.distanceTo(this.controls.target) < 360 ? 270 : 850;
     if (this.shadowRadius !== radius) {
       this.shadowRadius = radius;
@@ -100,7 +98,7 @@ export class ScheduledDiorama extends DioramaBase {
         this.projector.copy(label.position).project(this.camera);
         return { name: label.name, x: (this.projector.x * 0.5 + 0.5) * this.host.clientWidth, y: (-0.5 * this.projector.y + 0.5) * this.host.clientHeight, visible: Math.abs(this.projector.x) < 0.94 && Math.abs(this.projector.y) < 0.94 && this.projector.z < 1 };
       }) : [];
-      this.onFrame({ labels, heading: this.controls.getAzimuthalAngle() * 180 / Math.PI, fps: this.fps, activeTrains: this.activeTrains, period: this.daylight.period, daylightCaption: this.daylight.caption, daylightProgress: this.daylight.phase / 3 });
+      this.onFrame({ labels, heading: this.cameraHeading(), fps: this.fps, activeTrains: this.activeTrains, period: this.daylight.period, daylightCaption: this.daylight.caption, daylightProgress: this.daylight.phase / 3 });
     }
     this.animation = requestAnimationFrame(this.animate);
   }

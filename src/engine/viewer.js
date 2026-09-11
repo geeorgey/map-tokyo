@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createWorld } from './world.js';
+import { WalkCamera, createWalkBoundary } from './walk-camera.js';
+import { map } from './urban.js';
 import { samplePolyline } from './urban.js';
 import { updateShinkansen } from './shinkansen.js';
 import { sampleServiceMotion } from './train-motion.js';
@@ -41,6 +43,7 @@ export class Viewer {
     this.sun.shadow.mapSize.set(2048,2048);Object.assign(this.sun.shadow.camera,{left:-780,right:780,top:850,bottom:-850,near:1,far:1900});
     this.sun.shadow.bias=-.00025;this.sun.shadow.normalBias=.7;this.scene.add(this.sun);
     this.world=createWorld(this.scene);
+    this.walkCamera=new WalkCamera(this.camera,this.renderer.domElement,createWalkBoundary(map),()=>this.onWalkMove?.());
     this.ground=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshStandardMaterial({color:'#a9bab8',roughness:1}));
     this.ground.rotation.x=-Math.PI/2;this.ground.position.y=-15;this.ground.receiveShadow=true;this.scene.add(this.ground);
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.resize();
@@ -49,7 +52,25 @@ export class Viewer {
     this.lost=e=>{e.preventDefault();this.onFrame({error:'描画が中断されました。ページを再読み込みしてください。'});};
     this.renderer.domElement.addEventListener('webglcontextlost',this.lost);
   }
-  resize() {const {clientWidth:w,clientHeight:h}=this.host;this.renderer.setSize(w,h);this.camera.aspect=w/h;this.camera.fov=THREE.MathUtils.clamp(42*.77/(w/h),42,64);this.camera.updateProjectionMatrix();}
+  resize() {const {clientWidth:w,clientHeight:h}=this.host;this.renderer.setSize(w,h);this.camera.aspect=w/h;this.camera.fov=this.walkCamera?.active?65:THREE.MathUtils.clamp(42*.77/(w/h),42,64);this.camera.updateProjectionMatrix();}
+  setWalk(enabled) {
+    this.renderer.domElement.setAttribute('aria-label',enabled?'東京駅周辺の自由散策。ドラッグで見回し、WASD・矢印キーで移動。':'東京駅周辺の3Dジオラマ。ドラッグで回転、右ドラッグで移動、スクロールで拡大。');
+    if(enabled){
+      this.setFollow(false);this.transition=null;this.controls.autoRotate=false;
+      this.controls.enabled=false;this.camera.near=.15;this.walkCamera.start();
+    }else{
+      this.walkCamera.stop();this.controls.enabled=true;this.camera.near=1;
+      const direction=this.camera.getWorldDirection(new THREE.Vector3());
+      this.controls.target.copy(this.camera.position).addScaledVector(direction,30);
+    }
+    this.resize();
+  }
+  updateCamera(delta) {
+    if(this.walkCamera.active){this.walkCamera.update(delta);return;}
+    this.controls.update(delta);
+    this.controls.target.clamp(new THREE.Vector3(-730,0,-840),new THREE.Vector3(710,240,850));
+  }
+  cameraHeading() {return this.walkCamera.active?this.walkCamera.yaw*180/Math.PI:this.controls.getAzimuthalAngle()*180/Math.PI;}
   setFollow(enabled) {
     this.followTrain=null;this.followCamera.stop();
     if(!enabled)return false;
@@ -62,6 +83,7 @@ export class Viewer {
     return true;
   }
   setView(index) {
+    if(this.walkCamera.active)this.setWalk(false);
     this.setFollow(false);
     if(views[index].name==='新幹線')for(const train of this.world.trains){
       if(train.kind==='shinkansen')train.initialPhase=train.travel+(train.type==='n700'?-5:2)-this.time;
@@ -119,8 +141,7 @@ export class Viewer {
       this.camera.position.lerpVectors(this.transition.from,this.transition.to,s);this.controls.target.lerpVectors(this.transition.targetFrom,this.transition.targetTo,s);
       if(t===1)this.transition=null;
     }
-    this.controls.update(dt);
-    this.controls.target.clamp(new THREE.Vector3(-730,0,-840),new THREE.Vector3(710,240,850));
+    this.updateCamera(dt);
     // Allocate shadow resolution to station detail when the viewer moves close.
     const shadowRadius=this.camera.position.distanceTo(this.controls.target)<360?270:850;
     if(this.shadowRadius!==shadowRadius){
@@ -136,7 +157,7 @@ export class Viewer {
         this.projector.copy(l.position).project(this.camera);
         return {name:l.name,x:(this.projector.x*.5+.5)*this.host.clientWidth,y:(-.5*this.projector.y+.5)*this.host.clientHeight,visible:Math.abs(this.projector.x)<.94&&Math.abs(this.projector.y)<.94&&this.projector.z<1};
       }):[];
-      this.onFrame({labels,heading:this.controls.getAzimuthalAngle()*180/Math.PI,fps:this.fps,period:this.daylight.period,daylightCaption:this.daylight.caption,daylightProgress:this.daylight.phase/3});
+      this.onFrame({labels,heading:this.cameraHeading(),fps:this.fps,period:this.daylight.period,daylightCaption:this.daylight.caption,daylightProgress:this.daylight.phase/3});
     }
     this.animation=requestAnimationFrame(this.animate);
   }
@@ -146,7 +167,7 @@ export class Viewer {
     return {url:canvas.toDataURL('image/png'),filename:`tokyo-railway-${this.period}-${Date.now()}.png`};
   }
   dispose() {
-    this.disposed=true;cancelAnimationFrame(this.animation);this.observer.disconnect();this.controls.dispose();
+    this.disposed=true;cancelAnimationFrame(this.animation);this.observer.disconnect();this.walkCamera.dispose();this.controls.dispose();
     const geometries=new Set(),materials=new Set();
     this.scene.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.world.station.textures.forEach(t=>t.dispose());this.world.urban.textures.forEach(t=>t.dispose());this.renderer.domElement.removeEventListener('webglcontextlost',this.lost);this.renderer.dispose();this.renderer.domElement.remove();

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import WalkControls from './WalkControls.jsx';
 import TrainDialog from './TrainInspector.jsx';
 import updates from './data/updates.json';
 import { trackFeature } from './analytics.mjs';
@@ -90,6 +91,7 @@ export default function App() {
   const [rotate, setRotate] = useState(false);
   const [roofHidden, setRoofHidden] = useState(false);
   const [follow, setFollow] = useState(false);
+  const [walking, setWalking] = useState(false);
   const [frame, setFrame] = useState({ labels: [], heading: 0, fps: 0, activeTrains: [] });
   const [now, setNow] = useState(() => clock.now());
   const [data, setData] = useState(null);
@@ -143,9 +145,10 @@ export default function App() {
     const raf = requestAnimationFrame(() => {
       try {
         engine.current = new ScheduledDiorama(viewport.current, frame => frame.error ? setError(frame.error) : setFrame(frame), clock);
+        engine.current.onWalkMove = () => trackFeature('walk_move');
         setReady(true);
         // A read-only diagnostic snapshot for local/browser regression checks.
-        window.railwayDiagnostics = () => ({ now: clock.now(), live: clock.live, speed: clock.speed, paused: clock.paused, trains: engine.current?.world.trains.map((train, lane) => ({ lane, state: train.currentState, position: train.cars[0].position.toArray(), visible: train.cars[0].visible })) });
+        window.railwayDiagnostics = () => ({ now: clock.now(), live: clock.live, speed: clock.speed, paused: clock.paused, camera: { mode: engine.current?.walkCamera.active ? 'walk' : 'orbit', position: engine.current?.camera.position.toArray(), quaternion: engine.current?.camera.quaternion.toArray() }, trains: engine.current?.world.trains.map((train, lane) => ({ lane, state: train.currentState, position: train.cars[0].position.toArray(), visible: train.cars[0].visible })) });
       } catch (error) { console.error(error); setError('3D描画を開始できませんでした。WebGLが使えるブラウザで開いてください。'); }
     });
     return () => { cancelAnimationFrame(raf); engine.current?.dispose(); clearTimeout(toastTimer.current); delete window.railwayDiagnostics; };
@@ -164,11 +167,19 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  useEffect(() => { engine.current?.walkCamera.setSuspended(Boolean(dialog || capture)); }, [dialog, capture, ready]);
+
+  function startWalk() {
+    engine.current?.setWalk(true);setWalking(true);setFollow(false);setRotate(false);setView(-1);setViewsOpen(false);
+    engine.current?.renderer.domElement.focus({preventScroll:true});trackFeature('walk_start');
+  }
+  function walkHome() {engine.current?.walkCamera.home();engine.current?.renderer.domElement.focus({preventScroll:true});trackFeature('walk_home');}
   function selectPeriod(value) { setPeriod(value); setDaylightCycle(false); engine.current?.setPeriod(value); }
   function toggleDaylight() { const next = !daylightCycle; setPeriod(null); setDaylightCycle(next); engine.current?.setDaylightCycle(next); }
-  function selectView(index) { engine.current?.setView(index); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
+  function selectView(index) { engine.current?.setView(index); setWalking(false); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
   function seek(event) { clock.seek(event.at - 30000); clock.setPaused(false); refresh(); setRoofHidden(true); }
   function followTrain() {
+    if(walking){engine.current?.setWalk(false);setWalking(false);}
     if (follow) { engine.current?.setFollow(false); setFollow(false); return; }
     if (engine.current?.setFollow(true)) { setFollow(true); setView(-1); setRotate(false); setRoofHidden(true); }
     else notify('現在、N700系は画面内にいません。時刻表から次の発車へ移動できます。');
@@ -178,17 +189,19 @@ export default function App() {
     trackFeature('updates_try', { release_id: id, feature: action });
     if (action === 'timetable') { setDialog('timetable'); return; }
     setDialog(null);
+    if (action === 'walk') startWalk();
     if (action === 'daylight' && !daylightCycle) toggleDaylight();
     if (action === 'train') setDialog('train');
   }
   async function saveScene() { try { setCapture(await engine.current.capture()); } catch { notify('画像を保存できませんでした。もう一度お試しください。'); } }
 
-  return <main className={`app ${frame.period || period}`}>
+  return <main className={`app ${frame.period || period} ${walking ? 'is-walking' : ''}`}>
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
     <div className="top-controls"><div className="daylight-controls"><div className="period glass" role="group" aria-label="時間帯">{[['day', '昼'], ['evening', '夕'], ['night', '夜']].map(([value, label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}</div><button className="daylight-cycle glass" disabled={!ready} aria-pressed={daylightCycle} onClick={toggleDaylight} title="約90秒で昼・夕・夜を巡ります。もう一度押すと、その光で止まります。"><span>{daylightCycle ? '光の移ろいを止める' : '光の移ろい'}</span><small>{daylightCycle ? frame.daylightCaption : '昼・夕・夜を自動で'}</small>{daylightCycle && <i aria-hidden="true" style={{transform:`scaleX(${frame.daylightProgress || 0})`}}/>}</button></div><button className="capture glass icon" onClick={saveScene} disabled={!ready} aria-label="風景をPNGで保存" title="風景をPNGで保存">↧</button></div>
-    <nav className="updates-menu glass" aria-label="サイトメニュー"><button onClick={openUpdates} aria-haspopup="dialog">更新履歴 <span>↗</span></button></nav>
+    <nav className="updates-menu glass" aria-label="サイトメニュー"><button className="walk-entry" disabled={!ready} aria-pressed={walking} onClick={() => walking ? selectView(0) : startWalk()}>{walking ? '上から眺める' : '自由に歩く'} <span>↗</span></button><button onClick={openUpdates} aria-haspopup="dialog">更新履歴 <span>↗</span></button></nav>
+    {walking && <WalkControls controller={() => engine.current?.walkCamera} onHome={walkHome} onExit={() => selectView(0)} />}
     <aside className="time-stack">
       <ClockPanel now={now} onChange={refresh} data={data} context={context} />
       <section className="departure-panel glass" aria-label="次の発車">
@@ -199,7 +212,7 @@ export default function App() {
     </aside>
     <div className="scene-labels" aria-hidden={!labels}>{frame.labels.filter(label => label.visible).map(label => <span key={label.name} style={{ left: label.x, top: label.y }}>{label.name}</span>)}</div>
     <nav className={`viewpoints glass ${viewsOpen ? 'expanded' : ''}`} aria-label="視点を選択"><button className="views-disclosure" aria-expanded={viewsOpen} onClick={() => setViewsOpen(value => !value)}>視点・車両 <span>{viewsOpen ? '−' : '+'}</span></button><div className="view-options"><div className="panel-title">VIEWPOINT</div>{VIEWPOINTS.map((item, index) => <button key={item.name} aria-pressed={view === index} onClick={() => selectView(index)}><span className="view-num">0{index + 1}</span>{item.name}</button>)}<button className="follow-train" disabled={!ready} aria-pressed={follow} onClick={followTrain}>{follow ? 'N700系の追従を解除' : '新幹線を追う'}</button><button className="roof-toggle" aria-pressed={roofHidden} onClick={() => setRoofHidden(value => !value)}>ホーム屋根を隠す</button><button className="inspect-train" onClick={() => setDialog('train')}>新幹線の車両詳細 ↗</button></div></nav>
-    <div className="playback glass" role="toolbar" aria-label="描画コントロール"><button className="icon play" onClick={() => { clock.setPaused(!clock.paused); refresh(); }} aria-label={clock.paused ? '列車と時計を再開' : '列車と時計を一時停止'}>{clock.paused ? '▶' : 'Ⅱ'}</button><button className="speed" onClick={() => { clock.setSpeed(SPEEDS[(SPEEDS.indexOf(clock.speed) + 1) % SPEEDS.length]); refresh(); }} aria-label={`時計速度 ${clock.speed}倍。クリックで変更`}>{clock.speed}<span>×</span></button><i /><button aria-pressed={rotate} onClick={() => setRotate(value => !value)}>自動旋回</button><i /><button aria-pressed={labels} onClick={() => setLabels(value => !value)}>ラベル</button></div>
+    <div className="playback glass" role="toolbar" aria-label="描画コントロール"><button className="icon play" onClick={() => { clock.setPaused(!clock.paused); refresh(); }} aria-label={clock.paused ? '列車と時計を再開' : '列車と時計を一時停止'}>{clock.paused ? '▶' : 'Ⅱ'}</button><button className="speed" onClick={() => { clock.setSpeed(SPEEDS[(SPEEDS.indexOf(clock.speed) + 1) % SPEEDS.length]); refresh(); }} aria-label={`時計速度 ${clock.speed}倍。クリックで変更`}>{clock.speed}<span>×</span></button><i /><button disabled={walking} aria-pressed={rotate} onClick={() => setRotate(value => !value)}>自動旋回</button><i /><button aria-pressed={labels} onClick={() => setLabels(value => !value)}>ラベル</button></div>
     <aside className="orientation"><button className="compass" title="東京駅全景に戻す（0）" aria-label="東京駅全景に戻す" onClick={() => selectView(0)}><span className="north">N</span><svg viewBox="0 0 80 80" style={{ transform: `rotate(${-frame.heading}deg)` }}><circle cx="40" cy="40" r="32" /><path className="needle" d="M40 17L46 45L40 41L34 45Z" /><path className="needle-back" d="M40 63L46 45L40 41L34 45Z" /></svg></button><p>ドラッグで回転 / スクロールで拡大</p><div className="footnote"><span>右ドラッグで移動</span><button onClick={() => setDialog('about')} aria-label="このジオラマについて">ⓘ</button></div></aside>
     <a className="map-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
     {!ready && !error && <div className="loading"><span className="loader" /><p>東京の街を組み立てています</p></div>}
@@ -216,7 +229,7 @@ export default function App() {
     </Modal>}
     {dialog === 'train' && <TrainDialog onClose={() => setDialog(null)} />}
     {dialog === 'timetable' && data && <TimetableDialog data={data} events={events} now={now} context={context} onClose={() => setDialog(null)} onSeek={seek} />}
-    {dialog === 'about' && <Modal title="鉄道のある街を、眺める。" onClose={() => setDialog(null)}><p>東京駅とその周辺を、小さな立体の街にしました。好きな角度から、電車が行き交う風景を楽しんでください。</p><dl><dt>回転</dt><dd>左ドラッグ / 指1本</dd><dt>移動</dt><dd>右ドラッグ / 指2本</dd><dt>拡大・縮小</dt><dd>スクロール / ピンチ</dd><dt>時計の停止・再開</dt><dd>Spaceキー</dd><dt>現在の日時に戻る</dt><dd>「現在時刻に戻る」</dd><dt>全景に戻る</dt><dd>0キー / コンパス</dd></dl><p>昼・夕・夜は風景の見た目を切り替えます。時計とは独立しているので、好きな景色で時刻表の運行を眺められます。「光の移ろい」は約90秒で昼・夕・夜を巡り、再度押すとその光で止まります。</p><p className="data-note">東京駅の7路線・方向を6本の代表線路で表示しています。発車時刻と運行日にはJR東日本掲載時刻表を使用。番線・車両形式・入線と停車時間は簡略化し、同じ線路の列車が重なる場合は発車直後を優先します。遅延・運休・実際の列車位置には対応していません。</p><p className="data-note">地図データはOpenStreetMap。未登録の建物高や道路幅、駅舎の細部、中央線の高低差などは推定です。</p><p className="source-links"><a href="https://www.tokyostationcity.com/learning/station_building/" target="_blank" rel="noreferrer">駅舎の参考：Tokyo Station City ↗</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">地図データ：OpenStreetMap / ODbL ↗</a></p><div className="render-info">WebGL · Three.js <span>{frame.fps} fps</span></div></Modal>}
+    {dialog === 'about' && <Modal title="鉄道のある街を、眺める。" onClose={() => setDialog(null)}><p>東京駅とその周辺を、小さな立体の街にしました。好きな角度から、電車が行き交う風景を楽しんでください。</p><dl><dt>自由散策</dt><dd>「自由に歩く」から開始。WASD・矢印キー、または画面の方向ボタンで移動。ドラッグで見回せます。</dd><dt>回転</dt><dd>左ドラッグ / 指1本</dd><dt>移動</dt><dd>右ドラッグ / 指2本</dd><dt>拡大・縮小</dt><dd>スクロール / ピンチ</dd><dt>時計の停止・再開</dt><dd>Spaceキー</dd><dt>現在の日時に戻る</dt><dd>「現在時刻に戻る」</dd><dt>全景に戻る</dt><dd>0キー / コンパス</dd></dl><p>昼・夕・夜は風景の見た目を切り替えます。時計とは独立しているので、好きな景色で時刻表の運行を眺められます。「光の移ろい」は約90秒で昼・夕・夜を巡り、再度押すとその光で止まります。</p><p className="data-note">東京駅の7路線・方向を6本の代表線路で表示しています。発車時刻と運行日にはJR東日本掲載時刻表を使用。番線・車両形式・入線と停車時間は簡略化し、同じ線路の列車が重なる場合は発車直後を優先します。遅延・運休・実際の列車位置には対応していません。</p><p className="data-note">地図データはOpenStreetMap。未登録の建物高や道路幅、駅舎の細部、中央線の高低差などは推定です。</p><p className="source-links"><a href="https://www.tokyostationcity.com/learning/station_building/" target="_blank" rel="noreferrer">駅舎の参考：Tokyo Station City ↗</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">地図データ：OpenStreetMap / ODbL ↗</a></p><div className="render-info">WebGL · Three.js <span>{frame.fps} fps</span></div></Modal>}
     {capture && <Modal title="この風景を持ち帰る" onClose={() => setCapture(null)} wide><img className="captured-scene" src={capture.url} alt="書き出した東京駅周辺の風景" /><a className="download-button" href={capture.url} download={capture.filename}>PNGをダウンロード</a></Modal>}
   </main>;
 }
