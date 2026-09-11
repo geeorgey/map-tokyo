@@ -28,3 +28,15 @@ select{font:inherit;color:inherit;border:0;border-radius:5px;background:#fff7;cu
 @media(max-width:1000px){.walk-panel{left:20px;width:258px}}
 @media(max-width:600px){.updates-menu{left:auto;right:14px}.updates-menu button{gap:5px;padding:9px;font-size:10px}.viewpoints{width:128px}.is-walking .time-stack,.is-walking .playback{display:none}.is-walking .updates-menu{left:14px;right:auto;bottom:20px}.walk-panel{left:14px;bottom:81px;width:245px;padding:13px}.walk-heading strong{font-size:14px}.walk-panel p{margin:8px 0;font-size:11px}.walk-panel p span{font-size:9px}.walk-pad{margin:9px 0;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,44px)}.walk-home{padding:10px;font-size:11px}.walk-panel>small{font-size:8px;margin-top:7px}.is-walking .map-credit{bottom:3px}}
 @media(max-height:600px){.walk-panel{bottom:85px;padding:10px;width:240px}.walk-panel p{margin:4px 0}.walk-pad{margin:6px 0;grid-template-rows:repeat(2,40px)}.walk-panel>small{display:none}}
+
+/* Keep the scenery usable in narrow in-app browsers. */
+.menu-visibility{position:absolute;left:50%;top:28px;transform:translateX(-50%);z-index:8;min-height:44px;padding:10px 16px;border-radius:10px;font-size:12px;color:#263a36;background:rgba(244,247,239,.96);box-shadow:0 3px 18px #233a3020}
+.menus-hidden .identity,.menus-hidden .top-controls,.menus-hidden .updates-menu,.menus-hidden .time-stack,.menus-hidden .viewpoints,.menus-hidden .playback,.menus-hidden .orientation,.menus-hidden .scene-labels,.menus-hidden .top-shade{display:none}
+.menus-hidden .walk-panel{width:auto;padding:8px;bottom:30px}
+.menus-hidden .walk-panel .walk-heading,.menus-hidden .walk-panel p,.menus-hidden .walk-panel .walk-home,.menus-hidden .walk-panel>small{display:none}
+.menus-hidden .walk-pad{margin:0;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px);gap:4px}
+@media(max-width:600px){
+  .menu-visibility{transform:none;top:max(14px,env(safe-area-inset-top));left:max(14px,env(safe-area-inset-left));bottom:auto;right:auto;padding:10px 12px;font-size:11px}
+  .identity{display:none}
+  .menus-hidden .walk-panel{left:max(14px,env(safe-area-inset-left));bottom:max(25px,env(safe-area-inset-bottom))}
+}
