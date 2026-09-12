@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import WalkControls from './WalkControls.jsx';
+import { WALK_SPOTS } from './data/walk-spots.js';
 import TrainDialog from './TrainInspector.jsx';
 import updates from './data/updates.json';
 import { trackFeature } from './analytics.mjs';
@@ -146,7 +147,7 @@ export default function App() {
     const raf = requestAnimationFrame(() => {
       try {
         engine.current = new ScheduledDiorama(viewport.current, frame => frame.error ? setError(frame.error) : setFrame(frame), clock);
-        engine.current.onWalkMove = () => trackFeature('walk_move');
+        engine.current.onWalkMove = () => trackFeature('walk_move', { spot_id: engine.current?.walkCamera.spotId || 'free' });
         setReady(true);
         // A read-only diagnostic snapshot for local/browser regression checks.
         window.railwayDiagnostics = () => ({ now: clock.now(), live: clock.live, speed: clock.speed, paused: clock.paused, camera: { mode: engine.current?.walkCamera.active ? 'walk' : 'orbit', position: engine.current?.camera.position.toArray(), quaternion: engine.current?.camera.quaternion.toArray() }, trains: engine.current?.world.trains.map((train, lane) => ({ lane, state: train.currentState, position: train.cars[0].position.toArray(), visible: train.cars[0].visible })) });
@@ -175,6 +176,13 @@ export default function App() {
     engine.current?.renderer.domElement.focus({preventScroll:true});trackFeature('walk_start');
   }
   function walkHome() {engine.current?.walkCamera.home();engine.current?.renderer.domElement.focus({preventScroll:true});trackFeature('walk_home');}
+  function openSpots() {trackFeature('spot_open');setDialog('spots');}
+  function visitSpot(spot) {
+    startWalk();
+    if(!engine.current?.walkCamera.visit(spot.position,spot.target)){notify('この場所へ移動できませんでした。');return;}
+    engine.current.walkCamera.spotId=spot.id;setDialog(null);setMenusHidden(true);trackFeature('spot_visit',{spot_id:spot.id});
+    notify(spot.title);
+  }
   function selectPeriod(value) { setPeriod(value); setDaylightCycle(false); engine.current?.setPeriod(value); }
   function toggleDaylight() { const next = !daylightCycle; setPeriod(null); setDaylightCycle(next); engine.current?.setDaylightCycle(next); }
   function selectView(index) { engine.current?.setView(index); setWalking(false); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
@@ -188,6 +196,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'spots') {openSpots();return;}
     if (action === 'timetable') { setDialog('timetable'); return; }
     setDialog(null);
     if (action === 'walk') startWalk();
@@ -200,10 +209,11 @@ export default function App() {
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear(); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
+    {menusHidden && <button className="spots-shortcut glass" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>見どころへ ↗</button>}
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
     <div className="top-controls"><div className="daylight-controls"><div className="period glass" role="group" aria-label="時間帯">{[['day', '昼'], ['evening', '夕'], ['night', '夜']].map(([value, label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}</div><button className="daylight-cycle glass" disabled={!ready} aria-pressed={daylightCycle} onClick={toggleDaylight} title="約90秒で昼・夕・夜を巡ります。もう一度押すと、その光で止まります。"><span>{daylightCycle ? '光の移ろいを止める' : '光の移ろい'}</span><small>{daylightCycle ? frame.daylightCaption : '昼・夕・夜を自動で'}</small>{daylightCycle && <i aria-hidden="true" style={{transform:`scaleX(${frame.daylightProgress || 0})`}}/>}</button></div><button className="capture glass icon" onClick={saveScene} disabled={!ready} aria-label="風景をPNGで保存" title="風景をPNGで保存">↧</button></div>
     <nav className="updates-menu glass" aria-label="サイトメニュー"><button className="walk-entry" disabled={!ready} aria-pressed={walking} onClick={() => walking ? selectView(0) : startWalk()}>{walking ? '上から眺める' : '自由に歩く'} <span>↗</span></button><button onClick={openUpdates} aria-haspopup="dialog">更新履歴 <span>↗</span></button></nav>
-    {walking && <WalkControls controller={() => engine.current?.walkCamera} onHome={walkHome} onExit={() => selectView(0)} />}
+    {walking && <WalkControls controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onExit={() => selectView(0)} />}
     <aside className="time-stack">
       <ClockPanel now={now} onChange={refresh} data={data} context={context} />
       <section className="departure-panel glass" aria-label="次の発車">
@@ -213,13 +223,18 @@ export default function App() {
       </section>
     </aside>
     <div className="scene-labels" aria-hidden={!labels}>{frame.labels.filter(label => label.visible).map(label => <span key={label.name} style={{ left: label.x, top: label.y }}>{label.name}</span>)}</div>
-    <nav className={`viewpoints glass ${viewsOpen ? 'expanded' : ''}`} aria-label="視点を選択"><button className="views-disclosure" aria-expanded={viewsOpen} onClick={() => setViewsOpen(value => !value)}>視点・車両 <span>{viewsOpen ? '−' : '+'}</span></button><div className="view-options"><div className="panel-title">VIEWPOINT</div>{VIEWPOINTS.map((item, index) => <button key={item.name} aria-pressed={view === index} onClick={() => selectView(index)}><span className="view-num">0{index + 1}</span>{item.name}</button>)}<button className="follow-train" disabled={!ready} aria-pressed={follow} onClick={followTrain}>{follow ? 'N700系の追従を解除' : '新幹線を追う'}</button><button className="roof-toggle" aria-pressed={roofHidden} onClick={() => setRoofHidden(value => !value)}>ホーム屋根を隠す</button><button className="inspect-train" onClick={() => setDialog('train')}>新幹線の車両詳細 ↗</button></div></nav>
+    <nav className={`viewpoints glass ${viewsOpen ? 'expanded' : ''}`} aria-label="視点を選択"><button className="views-disclosure" aria-expanded={viewsOpen} onClick={() => setViewsOpen(value => !value)}>視点・車両 <span>{viewsOpen ? '−' : '+'}</span></button><div className="view-options"><div className="panel-title">VIEWPOINT</div><button className="spots-menu" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>散策の見どころ ↗</button>{VIEWPOINTS.map((item, index) => <button key={item.name} aria-pressed={view === index} onClick={() => selectView(index)}><span className="view-num">0{index + 1}</span>{item.name}</button>)}<button className="follow-train" disabled={!ready} aria-pressed={follow} onClick={followTrain}>{follow ? 'N700系の追従を解除' : '新幹線を追う'}</button><button className="roof-toggle" aria-pressed={roofHidden} onClick={() => setRoofHidden(value => !value)}>ホーム屋根を隠す</button><button className="inspect-train" onClick={() => setDialog('train')}>新幹線の車両詳細 ↗</button></div></nav>
     <div className="playback glass" role="toolbar" aria-label="描画コントロール"><button className="icon play" onClick={() => { clock.setPaused(!clock.paused); refresh(); }} aria-label={clock.paused ? '列車と時計を再開' : '列車と時計を一時停止'}>{clock.paused ? '▶' : 'Ⅱ'}</button><button className="speed" onClick={() => { clock.setSpeed(SPEEDS[(SPEEDS.indexOf(clock.speed) + 1) % SPEEDS.length]); refresh(); }} aria-label={`時計速度 ${clock.speed}倍。クリックで変更`}>{clock.speed}<span>×</span></button><i /><button disabled={walking} aria-pressed={rotate} onClick={() => setRotate(value => !value)}>自動旋回</button><i /><button aria-pressed={labels} onClick={() => setLabels(value => !value)}>ラベル</button></div>
     <aside className="orientation"><button className="compass" title="東京駅全景に戻す（0）" aria-label="東京駅全景に戻す" onClick={() => selectView(0)}><span className="north">N</span><svg viewBox="0 0 80 80" style={{ transform: `rotate(${-frame.heading}deg)` }}><circle cx="40" cy="40" r="32" /><path className="needle" d="M40 17L46 45L40 41L34 45Z" /><path className="needle-back" d="M40 63L46 45L40 41L34 45Z" /></svg></button><p>ドラッグで回転 / スクロールで拡大</p><div className="footnote"><span>右ドラッグで移動</span><button onClick={() => setDialog('about')} aria-label="このジオラマについて">ⓘ</button></div></aside>
     <a className="map-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
     {!ready && !error && <div className="loading"><span className="loader" /><p>東京の街を組み立てています</p></div>}
     {error && <div className="error" role="alert"><p>{error}</p><button onClick={() => location.reload()}>再読み込み</button></div>}
     {toast && <div className="toast glass" role="status">{toast}</div>}
+    {dialog === 'spots' && <Modal title="どの景色から歩く？" onClose={() => setDialog(null)}>
+      <p>気になる場所を選ぶと、地上の目線へ。着いた先から自由に歩けます。</p>
+      <div className="spot-list">{WALK_SPOTS.map((spot,index)=><button key={spot.id} onClick={() => visitSpot(spot)}><span className="spot-number">0{index+1}</span><span><strong>{spot.title}</strong><small>{spot.caption}</small></span><span aria-hidden="true">↗</span></button>)}</div>
+      <p className="data-note">今回は駅舎の外の3か所。駅の中は今後の更新で。</p>
+    </Modal>}
     {dialog === 'updates' && <Modal title="東京鉄道景の更新履歴" onClose={() => setDialog(null)} wide>
       <p className="updates-intro">街が少しずつ変わっていく。その日の新しい楽しみ方を、ここから。</p>
       <ol className="updates-list">{updates.map((update, index) => <li key={update.id}>

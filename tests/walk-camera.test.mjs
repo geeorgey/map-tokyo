@@ -32,3 +32,30 @@ test('footprints block walls but leave courtyards and elevated buildings passabl
   const elevated=createWalkBoundary({buildings:[{base:10,shape}],surfaces:{water:[]}});
   assert.equal(elevated(-399,-90),true);
 });
+
+test('all featured spots are outdoors, reachable and can lead into free walking',async()=>{
+  const {WALK_SPOTS}=await import('../src/data/walk-spots.js');
+  const allowed=createWalkBoundary(map);
+  assert.equal(new Set(WALK_SPOTS.map(s=>s.id)).size,WALK_SPOTS.length);
+  for(const spot of WALK_SPOTS){
+    assert.ok(allowed(spot.position[0],spot.position[2]),spot.id);
+    const yaw=Math.atan2(spot.position[0]-spot.target[0],spot.position[2]-spot.target[2]);
+    const p=walkStep(spot.position,yaw,1,0,.1,allowed);
+    assert.ok(Math.hypot(p[0]-spot.position[0],p[2]-spot.position[2])>.1,spot.id);
+  }
+});
+
+test('visiting a spot clears held input, faces the target, and rejects blocked landings',async()=>{
+  const {WalkCamera}=await import('../src/engine/walk-camera.js');
+  const {PerspectiveCamera,Euler,Vector3}=await import('three');
+  const walk=Object.create(WalkCamera.prototype);
+  Object.assign(walk,{active:true,camera:new PerspectiveCamera(),euler:new Euler(0,0,0,'YXZ'),keys:new Set(['KeyW']),actions:new Set(['forward']),clear(){this.keys.clear();this.actions.clear();},canEnter:x=>x<0});
+  assert.equal(walk.visit([-100,2.2,20],[-50,16,0]),true);
+  assert.equal(walk.keys.size+walk.actions.size,0);
+  assert.equal(walk.moved,false);
+  const expected=new Vector3(50,13.8,-20).normalize();
+  assert.ok(walk.camera.getWorldDirection(new Vector3()).dot(expected)>.999);
+  const before=walk.camera.position.toArray();
+  assert.equal(walk.visit([10,2.2,20],[50,10,0]),false);
+  assert.deepEqual(walk.camera.position.toArray(),before);
+});

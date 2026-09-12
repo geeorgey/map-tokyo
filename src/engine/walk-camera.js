@@ -89,7 +89,14 @@ export class WalkCamera {
     document.addEventListener('visibilitychange',this.visibility);
   }
   start() {this.active=true;this.moved=false;this.home();}
-  home() {this.clear();this.camera.position.fromArray(WALK_START);this.yaw=-Math.PI/2;this.pitch=.09;this.orient();}
+  home() {this.clear();this.spotId=null;this.camera.position.fromArray(WALK_START);this.yaw=-Math.PI/2;this.pitch=.09;this.orient();}
+  visit(position,target) {
+    if(!this.active || !position.every(Number.isFinite) || !target.every(Number.isFinite) || !this.canEnter(position[0],position[2]))return false;
+    this.clear();this.camera.position.set(position[0],EYE_HEIGHT,position[2]);
+    const dx=target[0]-position[0],dz=target[2]-position[2];
+    this.yaw=Math.atan2(-dx,-dz);this.pitch=clamp(Math.atan2(target[1]-EYE_HEIGHT,Math.hypot(dx,dz)),-1.1,1.1);
+    this.moved=false;this.orient();return true;
+  }
   stop() {this.active=false;this.clear();}
   setSuspended(value) {this.suspended=value;if(value)this.clear();}
   setAction(action, pressed) {if(pressed && this.active && !this.suspended)this.actions.add(action);else this.actions.delete(action);}
