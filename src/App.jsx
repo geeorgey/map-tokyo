@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import WalkControls from './WalkControls.jsx';
 import { WALK_SPOTS } from './data/walk-spots.js';
 import TrainDialog from './TrainInspector.jsx';
@@ -103,6 +104,8 @@ export default function App() {
   const monthCache = useRef(new Map());
   const [dialog, setDialog] = useState(null);
   const [capture, setCapture] = useState(null);
+  const [sceneLink, setSceneLink] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
   const [toast, setToast] = useState('');
   const [viewsOpen, setViewsOpen] = useState(false);
   const context = serviceContext(now, data);
@@ -155,6 +158,22 @@ export default function App() {
     });
     return () => { cancelAnimationFrame(raf); engine.current?.dispose(); clearTimeout(toastTimer.current); delete window.railwayDiagnostics; };
   }, []);
+  useEffect(() => {
+    if (!ready) return;
+    const applyLink = () => {
+    if (!window.location.hash.includes('scene=')) return;
+    const walk = engine.current.walkCamera;
+    const pose = parseSceneLink(window.location.hash, walk.canEnter);
+    if (!pose) { notify('この景色のリンクは使えません。見どころから散策できます。'); return; }
+    startWalk();
+    walk.camera.position.set(pose.x,2.2,pose.z);walk.yaw=pose.yaw;walk.pitch=pose.pitch;walk.orient();
+    engine.current.daylight.setRunning(false);engine.current.daylight.phase=pose.light;engine.current.daylight.sample();engine.current.applyDaylight();
+    setPeriod(Number.isInteger(pose.light) ? ['day','evening','night'][pose.light] : null);setDaylightCycle(false);setMenusHidden(true);
+    trackFeature('scene_link_arrive');notify('リンクの景色に到着しました。そのまま歩けます。');
+    };
+    applyLink();window.addEventListener('hashchange',applyLink);
+    return () => window.removeEventListener('hashchange',applyLink);
+  }, [ready]);
   useEffect(() => { engine.current?.setEvents(events); }, [events, ready]);
   useEffect(() => { if (engine.current) engine.current.controls.autoRotate = rotate; }, [rotate, ready]);
   useEffect(() => { if (engine.current) engine.current.labelsVisible = labels; }, [labels, ready]);
@@ -183,6 +202,17 @@ export default function App() {
     engine.current.walkCamera.spotId=spot.id;setDialog(null);setMenusHidden(true);trackFeature('spot_visit',{spot_id:spot.id});
     notify(spot.title);
   }
+  function openSceneLink() {
+    const current=engine.current,walk=current?.walkCamera;
+    if(!walk?.active)return;
+    const url=makeSceneLink(window.location.origin,{x:walk.camera.position.x,z:walk.camera.position.z,yaw:walk.yaw,pitch:walk.pitch,light:current.daylight.phase},walk.canEnter);
+    if(!url){notify('この場所のリンクを作れませんでした。少し移動してお試しください。');return;}
+    setSceneLink(url);setLinkCopied(false);setDialog('scene-link');trackFeature('scene_link_open');
+  }
+  async function copySceneLink() {
+    try {await navigator.clipboard.writeText(sceneLink);setLinkCopied(true);trackFeature('scene_link_copy');}
+    catch {setLinkCopied(false);notify('リンク欄を長押し、または選択してコピーしてください。');}
+  }
   function selectPeriod(value) { setPeriod(value); setDaylightCycle(false); engine.current?.setPeriod(value); }
   function toggleDaylight() { const next = !daylightCycle; setPeriod(null); setDaylightCycle(next); engine.current?.setDaylightCycle(next); }
   function selectView(index) { engine.current?.setView(index); setWalking(false); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
@@ -196,6 +226,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'scene-link') {startWalk();setDialog(null);notify('好きな方向を向いて「景色のリンク」を押してください。');return;}
     if (action === 'spots') {openSpots();return;}
     if (action === 'timetable') { setDialog('timetable'); return; }
     setDialog(null);
@@ -213,7 +244,7 @@ export default function App() {
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
     <div className="top-controls"><div className="daylight-controls"><div className="period glass" role="group" aria-label="時間帯">{[['day', '昼'], ['evening', '夕'], ['night', '夜']].map(([value, label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}</div><button className="daylight-cycle glass" disabled={!ready} aria-pressed={daylightCycle} onClick={toggleDaylight} title="約90秒で昼・夕・夜を巡ります。もう一度押すと、その光で止まります。"><span>{daylightCycle ? '光の移ろいを止める' : '光の移ろい'}</span><small>{daylightCycle ? frame.daylightCaption : '昼・夕・夜を自動で'}</small>{daylightCycle && <i aria-hidden="true" style={{transform:`scaleX(${frame.daylightProgress || 0})`}}/>}</button></div><button className="capture glass icon" onClick={saveScene} disabled={!ready} aria-label="風景をPNGで保存" title="風景をPNGで保存">↧</button></div>
     <nav className="updates-menu glass" aria-label="サイトメニュー"><button className="walk-entry" disabled={!ready} aria-pressed={walking} onClick={() => walking ? selectView(0) : startWalk()}>{walking ? '上から眺める' : '自由に歩く'} <span>↗</span></button><button onClick={openUpdates} aria-haspopup="dialog">更新履歴 <span>↗</span></button></nav>
-    {walking && <WalkControls controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onExit={() => selectView(0)} />}
+    {walking && <WalkControls controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onShare={openSceneLink} onExit={() => selectView(0)} />}
     <aside className="time-stack">
       <ClockPanel now={now} onChange={refresh} data={data} context={context} />
       <section className="departure-panel glass" aria-label="次の発車">
@@ -230,6 +261,14 @@ export default function App() {
     {!ready && !error && <div className="loading"><span className="loader" /><p>東京の街を組み立てています</p></div>}
     {error && <div className="error" role="alert"><p>{error}</p><button onClick={() => location.reload()}>再読み込み</button></div>}
     {toast && <div className="toast glass" role="status">{toast}</div>}
+    {dialog === 'scene-link' && <Modal title="この景色から、また歩こう。" onClose={() => setDialog(null)}>
+      <p>散策の位置・向き・光を、リンクにしました。保存して戻ってきたり、この景色を誰かに見せたりできます。</p>
+      <label className="scene-link-label">景色のリンク<input aria-label="景色のリンク" value={sceneLink} readOnly onFocus={event => event.target.select()} /></label>
+      <button className="scene-link-copy" onClick={copySceneLink}>{linkCopied ? 'コピーしました ✓' : 'リンクをコピー'}</button>
+      <p role="status" className="data-note">{linkCopied ? 'リンクを開くと、同じ場所と向きから散策できます。' : 'コピーできない場合は、リンク欄を選択してコピーできます。'}</p>
+      <a className="scene-link-preview" href={sceneLink} target="_blank" rel="noreferrer">このリンクの景色を開く ↗</a>
+      <p className="data-note">光はリンク作成時の状態。列車は開いたときの時刻表で動きます。</p>
+    </Modal>}
     {dialog === 'spots' && <Modal title="どの景色から歩く？" onClose={() => setDialog(null)}>
       <p>気になる場所を選ぶと、地上の目線へ。着いた先から自由に歩けます。</p>
       <div className="spot-list">{WALK_SPOTS.map((spot,index)=><button key={spot.id} onClick={() => visitSpot(spot)}><span className="spot-number">0{index+1}</span><span><strong>{spot.title}</strong><small>{spot.caption}</small></span><span aria-hidden="true">↗</span></button>)}</div>
