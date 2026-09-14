@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mjs';
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import WalkControls from './WalkControls.jsx';
 import { WALK_SPOTS } from './data/walk-spots.js';
@@ -104,6 +105,11 @@ export default function App() {
   const monthCache = useRef(new Map());
   const [dialog, setDialog] = useState(null);
   const [capture, setCapture] = useState(null);
+  const [bookmarks, setBookmarks] = useState([]);
+  const [bookmarkHash, setBookmarkHash] = useState('');
+  const [bookmarkName, setBookmarkName] = useState('');
+  const [bookmarkError, setBookmarkError] = useState('');
+  const [bookmarkStatus, setBookmarkStatus] = useState('');
   const [sceneLink, setSceneLink] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [toast, setToast] = useState('');
@@ -165,10 +171,7 @@ export default function App() {
     const walk = engine.current.walkCamera;
     const pose = parseSceneLink(window.location.hash, walk.canEnter);
     if (!pose) { notify('この景色のリンクは使えません。見どころから散策できます。'); return; }
-    startWalk();
-    walk.camera.position.set(pose.x,2.2,pose.z);walk.yaw=pose.yaw;walk.pitch=pose.pitch;walk.orient();
-    engine.current.daylight.setRunning(false);engine.current.daylight.phase=pose.light;engine.current.daylight.sample();engine.current.applyDaylight();
-    setPeriod(Number.isInteger(pose.light) ? ['day','evening','night'][pose.light] : null);setDaylightCycle(false);setMenusHidden(true);
+    restoreScene(pose);
     trackFeature('scene_link_arrive');notify('リンクの景色に到着しました。そのまま歩けます。');
     };
     applyLink();window.addEventListener('hashchange',applyLink);
@@ -202,6 +205,41 @@ export default function App() {
     engine.current.walkCamera.spotId=spot.id;setDialog(null);setMenusHidden(true);trackFeature('spot_visit',{spot_id:spot.id});
     notify(spot.title);
   }
+  function restoreScene(pose) {
+    startWalk();const walk=engine.current.walkCamera;
+    walk.camera.position.set(pose.x,2.2,pose.z);walk.yaw=pose.yaw;walk.pitch=pose.pitch;walk.orient();
+    engine.current.daylight.setRunning(false);engine.current.daylight.phase=pose.light;engine.current.daylight.sample();engine.current.applyDaylight();
+    setPeriod(Number.isInteger(pose.light) ? ['day','evening','night'][pose.light] : null);setDaylightCycle(false);setMenusHidden(true);setDialog(null);
+  }
+  function currentSceneLink() {
+    const current=engine.current,walk=current?.walkCamera;
+    return walk?.active ? makeSceneLink(window.location.origin,{x:walk.camera.position.x,z:walk.camera.position.z,yaw:walk.yaw,pitch:walk.pitch,light:current.daylight.phase},walk.canEnter) : null;
+  }
+  function openBookmarks(saveCurrent=false) {
+    setBookmarkError('');setBookmarkStatus('');setBookmarkHash('');
+    try {setBookmarks(readBookmarks(window.localStorage));} catch {setBookmarks([]);setBookmarkError('しおりを読み込めません。このブラウザの保存設定をご確認ください。');}
+    if(saveCurrent){
+      const link=currentSceneLink();
+      if(link){setBookmarkHash(new URL(link).hash);setBookmarkName('お気に入りの東京駅');}
+      else setBookmarkError('散策を始めてから、この景色を保存できます。');
+    }
+    trackFeature('bookmark_open');setDialog('bookmarks');
+  }
+  function saveBookmark(event) {
+    event.preventDefault();setBookmarkError('');
+    try {setBookmarks(addBookmark(window.localStorage,{id:crypto.randomUUID(),name:bookmarkName,hash:bookmarkHash}));setBookmarkHash('');setBookmarkStatus('このブラウザに保存しました。次回も「見どころへ」から開けます。');trackFeature('bookmark_save');}
+    catch(error){setBookmarkError(error.name==='Error' ? error.message : '保存できませんでした。このブラウザの保存設定をご確認ください。');}
+  }
+  function deleteBookmark(id) {
+    setBookmarkError('');
+    try {setBookmarks(removeBookmark(window.localStorage,id));setBookmarkStatus('しおりを削除しました。');}
+    catch {setBookmarkError('削除できませんでした。もう一度お試しください。');}
+  }
+  function visitBookmark(bookmark) {
+    const pose=parseSceneLink(bookmark.hash,engine.current.walkCamera.canEnter);
+    if(!pose){setBookmarkError('この景色へ移動できません。ほかのしおりをお試しください。');return;}
+    restoreScene(pose);trackFeature('bookmark_visit');notify(`「${bookmark.name}」に戻りました。`);
+  }
   function openSceneLink() {
     const current=engine.current,walk=current?.walkCamera;
     if(!walk?.active)return;
@@ -226,6 +264,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'bookmarks') {startWalk();openBookmarks(true);return;}
     if (action === 'scene-link') {startWalk();setDialog(null);notify('好きな方向を向いて「景色のリンク」を押してください。');return;}
     if (action === 'spots') {openSpots();return;}
     if (action === 'timetable') { setDialog('timetable'); return; }
@@ -244,7 +283,7 @@ export default function App() {
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
     <div className="top-controls"><div className="daylight-controls"><div className="period glass" role="group" aria-label="時間帯">{[['day', '昼'], ['evening', '夕'], ['night', '夜']].map(([value, label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}</div><button className="daylight-cycle glass" disabled={!ready} aria-pressed={daylightCycle} onClick={toggleDaylight} title="約90秒で昼・夕・夜を巡ります。もう一度押すと、その光で止まります。"><span>{daylightCycle ? '光の移ろいを止める' : '光の移ろい'}</span><small>{daylightCycle ? frame.daylightCaption : '昼・夕・夜を自動で'}</small>{daylightCycle && <i aria-hidden="true" style={{transform:`scaleX(${frame.daylightProgress || 0})`}}/>}</button></div><button className="capture glass icon" onClick={saveScene} disabled={!ready} aria-label="風景をPNGで保存" title="風景をPNGで保存">↧</button></div>
     <nav className="updates-menu glass" aria-label="サイトメニュー"><button className="walk-entry" disabled={!ready} aria-pressed={walking} onClick={() => walking ? selectView(0) : startWalk()}>{walking ? '上から眺める' : '自由に歩く'} <span>↗</span></button><button onClick={openUpdates} aria-haspopup="dialog">更新履歴 <span>↗</span></button></nav>
-    {walking && <WalkControls controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onShare={openSceneLink} onExit={() => selectView(0)} />}
+    {walking && <WalkControls controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onShare={openSceneLink} onBookmark={() => openBookmarks(true)} onExit={() => selectView(0)} />}
     <aside className="time-stack">
       <ClockPanel now={now} onChange={refresh} data={data} context={context} />
       <section className="departure-panel glass" aria-label="次の発車">
@@ -261,6 +300,21 @@ export default function App() {
     {!ready && !error && <div className="loading"><span className="loader" /><p>東京の街を組み立てています</p></div>}
     {error && <div className="error" role="alert"><p>{error}</p><button onClick={() => location.reload()}>再読み込み</button></div>}
     {toast && <div className="toast glass" role="status">{toast}</div>}
+    {dialog === 'bookmarks' && <Modal title="景色のしおり" onClose={() => setDialog(null)}>
+      <p>好きな場所・向き・光に、また戻ってこられます。</p>
+      {bookmarkHash && <form className="bookmark-form" onSubmit={saveBookmark}>
+        <label>しおりの名前<input aria-label="しおりの名前" maxLength={32} required value={bookmarkName} onChange={event => setBookmarkName(event.target.value)} /></label>
+        <button type="submit">この景色を保存</button>
+      </form>}
+      {bookmarkError && <p role="alert" className="bookmark-error">{bookmarkError}</p>}
+      {bookmarkStatus && <p role="status">{bookmarkStatus}</p>}
+      <div className="bookmark-list">{bookmarks.map(bookmark => <div key={bookmark.id}>
+        <button className="bookmark-visit" onClick={() => visitBookmark(bookmark)}><span aria-hidden="true">▱</span><strong>{bookmark.name}</strong><span aria-hidden="true">↗</span></button>
+        <button className="bookmark-delete" aria-label={`「${bookmark.name}」のしおりを削除`} onClick={() => deleteBookmark(bookmark.id)}>削除</button>
+      </div>)}</div>
+      {!bookmarks.length && <p className="data-note">まだしおりはありません。散策中の「しおり」から、好きな景色を保存できます。</p>}
+      <p className="data-note">このブラウザだけに最大5件保存します。閲覧データを消すと、しおりも消えます。列車は開いたときの時計で動きます。</p>
+    </Modal>}
     {dialog === 'scene-link' && <Modal title="この景色から、また歩こう。" onClose={() => setDialog(null)}>
       <p>散策の位置・向き・光を、リンクにしました。保存して戻ってきたり、この景色を誰かに見せたりできます。</p>
       <label className="scene-link-label">景色のリンク<input aria-label="景色のリンク" value={sceneLink} readOnly onFocus={event => event.target.select()} /></label>
@@ -272,6 +326,7 @@ export default function App() {
     {dialog === 'spots' && <Modal title="どの景色から歩く？" onClose={() => setDialog(null)}>
       <p>気になる場所を選ぶと、地上の目線へ。着いた先から自由に歩けます。</p>
       <div className="spot-list">{WALK_SPOTS.map((spot,index)=><button key={spot.id} onClick={() => visitSpot(spot)}><span className="spot-number">0{index+1}</span><span><strong>{spot.title}</strong><small>{spot.caption}</small></span><span aria-hidden="true">↗</span></button>)}</div>
+      <button className="bookmarks-entry" onClick={() => openBookmarks(false)}>景色のしおり ↗</button>
       <p className="data-note">今回は駅舎の外の3か所。駅の中は今後の更新で。</p>
     </Modal>}
     {dialog === 'updates' && <Modal title="東京鉄道景の更新履歴" onClose={() => setDialog(null)} wide>
