@@ -59,3 +59,50 @@ test('visiting a spot clears held input, faces the target, and rejects blocked l
   assert.equal(walk.visit([10,2.2,20],[50,10,0]),false);
   assert.deepEqual(walk.camera.position.toArray(),before);
 });
+
+async function autoWalkFixture(run) {
+  const {WalkCamera}=await import('../src/engine/walk-camera.js');
+  const {PerspectiveCamera}=await import('three');
+  const previousWindow=globalThis.window,previousDocument=globalThis.document;
+  const fakeWindow=new EventTarget(),fakeDocument=Object.assign(new EventTarget(),{hidden:false});
+  globalThis.window=fakeWindow;globalThis.document=fakeDocument;
+  const canvas=Object.assign(new EventTarget(),{focus(){},setPointerCapture(){}});
+  const events=[];const walk=new WalkCamera(new PerspectiveCamera(),canvas,()=>true);
+  walk.onAutoChange=(enabled,detail)=>events.push({enabled,...detail});
+  try{await run(walk,events,fakeWindow,fakeDocument);}finally{walk.dispose();globalThis.window=previousWindow;globalThis.document=previousDocument;}
+}
+
+test('auto walk continues without held input, follows a changed view and stops explicitly',()=>autoWalkFixture((walk,events)=>{
+  walk.setAutoMoving(true);assert.equal(walk.autoMoving,false);
+  walk.start();walk.yaw=0;walk.actions.add('left');walk.setAutoMoving(true);
+  const initial=walk.camera.position.toArray();
+  for(let i=0;i<10;i++)walk.update(.1);
+  assert.ok(Math.abs(walk.camera.position.z-(initial[2]-7.15))<1e-8);
+  assert.equal(walk.camera.position.x,initial[0]);assert.equal(walk.actions.size,0);
+  walk.yaw=Math.PI/2;walk.update(.1);assert.ok(walk.camera.position.x<initial[0]);
+  walk.setAutoMoving(false);const stopped=walk.camera.position.toArray();walk.update(.1);
+  assert.deepEqual(walk.camera.position.toArray(),stopped);
+  assert.equal(events.at(-1).duration_seconds,1);assert.equal(events.length,2);
+}));
+
+test('auto walk stops at the first obstacle and does not restart or slide indefinitely',()=>autoWalkFixture((walk,events)=>{
+  walk.start();walk.camera.position.set(0,2.2,0);walk.yaw=0;walk.canEnter=(x,z)=>z>-.5;
+  walk.setAutoMoving(true);walk.update(.1);
+  assert.ok(walk.camera.position.z>-.5);assert.equal(walk.autoMoving,false);
+  assert.equal(events.at(-1).reason,'obstacle');const stopped=walk.camera.position.toArray();
+  walk.update(.1);assert.deepEqual(walk.camera.position.toArray(),stopped);assert.equal(events.length,2);
+}));
+
+test('manual input, dialogs, background and window blur cancel auto walk without resuming',()=>autoWalkFixture((walk,events,win,doc)=>{
+  walk.start();walk.setAutoMoving(true);walk.setAction('back',true);
+  assert.equal(walk.autoMoving,false);assert.equal(events.at(-1).reason,'manual');
+  walk.setAutoMoving(true);walk.keyDown({code:'KeyW',target:{closest:()=>null},preventDefault(){}});
+  assert.equal(walk.autoMoving,false);assert.ok(walk.keys.has('KeyW'));
+  walk.setAutoMoving(true);walk.setSuspended(true);walk.setAutoMoving(true);
+  assert.equal(walk.autoMoving,false);walk.setSuspended(false);assert.equal(walk.autoMoving,false);
+  walk.setAutoMoving(true);doc.hidden=true;doc.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(walk.autoMoving,false);assert.equal(events.at(-1).reason,'hidden');
+  doc.hidden=false;doc.dispatchEvent(new Event('visibilitychange'));assert.equal(walk.autoMoving,false);
+  walk.setAutoMoving(true);win.dispatchEvent(new Event('blur'));
+  assert.equal(walk.autoMoving,false);assert.equal(events.at(-1).reason,'blur');
+}));

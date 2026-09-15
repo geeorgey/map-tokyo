@@ -57,7 +57,7 @@ export function walkStep(position, yaw, forward, side, seconds, canEnter = () =>
 export class WalkCamera {
   constructor(camera, canvas, canEnter, onMove = () => {}) {
     this.camera=camera; this.canvas=canvas; this.canEnter=canEnter; this.onMove=onMove;
-    this.active=false; this.suspended=false; this.keys=new Set(); this.actions=new Set();
+    this.active=false; this.suspended=false; this.autoMoving=false; this.autoSeconds=0; this.keys=new Set(); this.actions=new Set();
     this.euler=new Euler(0,0,0,'YXZ'); this.direction=new Vector3();
     this.down=e=>{
       if(!this.active || this.suspended || e.button!==0 || this.pointer) return;
@@ -73,11 +73,11 @@ export class WalkCamera {
     this.up=e=>{if(this.pointer?.id===e.pointerId)this.pointer=null;};
     this.keyDown=e=>{
       if(!this.active || this.suspended || !KEY_ACTIONS[e.code] || e.altKey || e.metaKey || e.ctrlKey || e.target.closest('input,textarea,select,button,a,dialog,[contenteditable]'))return;
-      e.preventDefault(); this.keys.add(e.code);
+      e.preventDefault(); this.setAutoMoving(false,'manual'); this.keys.add(e.code);
     };
     this.keyUp=e=>this.keys.delete(e.code);
-    this.clear=()=>{this.keys.clear();this.actions.clear();this.pointer=null;};
-    this.visibility=()=>{if(document.hidden)this.clear();};
+    this.clear=(reason='interrupted')=>{this.keys.clear();this.actions.clear();this.pointer=null;this.setAutoMoving(false,typeof reason==='string'?reason:'blur');};
+    this.visibility=()=>{if(document.hidden)this.clear('hidden');};
     canvas.addEventListener('pointerdown',this.down);
     canvas.addEventListener('pointermove',this.move);
     canvas.addEventListener('pointerup',this.up);
@@ -89,26 +89,39 @@ export class WalkCamera {
     document.addEventListener('visibilitychange',this.visibility);
   }
   start() {this.active=true;this.moved=false;this.home();}
-  home() {this.clear();this.spotId=null;this.camera.position.fromArray(WALK_START);this.yaw=-Math.PI/2;this.pitch=.09;this.orient();}
+  home() {this.clear('home');this.spotId=null;this.camera.position.fromArray(WALK_START);this.yaw=-Math.PI/2;this.pitch=.09;this.orient();}
   visit(position,target) {
     if(!this.active || !position.every(Number.isFinite) || !target.every(Number.isFinite) || !this.canEnter(position[0],position[2]))return false;
-    this.clear();this.camera.position.set(position[0],EYE_HEIGHT,position[2]);
+    this.clear('spot');this.camera.position.set(position[0],EYE_HEIGHT,position[2]);
     const dx=target[0]-position[0],dz=target[2]-position[2];
     this.yaw=Math.atan2(-dx,-dz);this.pitch=clamp(Math.atan2(target[1]-EYE_HEIGHT,Math.hypot(dx,dz)),-1.1,1.1);
     this.moved=false;this.orient();return true;
   }
-  stop() {this.active=false;this.clear();}
-  setSuspended(value) {this.suspended=value;if(value)this.clear();}
-  setAction(action, pressed) {if(pressed && this.active && !this.suspended)this.actions.add(action);else this.actions.delete(action);}
+  stop() {this.active=false;this.clear('exit');}
+  setSuspended(value) {this.suspended=value;if(value)this.clear('dialog');}
+  setAction(action, pressed) {if(pressed && this.active && !this.suspended){this.setAutoMoving(false,'manual');this.actions.add(action);}else this.actions.delete(action);}
+  setAutoMoving(value, reason='button') {
+    const enabled=Boolean(value && this.active && !this.suspended);
+    if(enabled===this.autoMoving)return;
+    this.autoMoving=enabled;
+    if(enabled){this.keys.clear();this.actions.clear();this.autoSeconds=0;this.moved=false;}
+    this.onAutoChange?.(enabled,{reason,duration_seconds:Math.round(this.autoSeconds)});
+  }
   orient() {this.euler.set(this.pitch,this.yaw,0,'YXZ');this.camera.quaternion.setFromEuler(this.euler);}
   update(delta) {
     if(!this.active || this.suspended)return;
     const pressed=new Set([...this.actions,...[...this.keys].map(key=>KEY_ACTIONS[key])]);
-    const forward=Number(pressed.has('forward'))-Number(pressed.has('back'));
+    const forward=this.autoMoving ? .55 : Number(pressed.has('forward'))-Number(pressed.has('back'));
     const side=Number(pressed.has('right'))-Number(pressed.has('left'));
     if(forward || side) {
       const previous=this.camera.position.toArray();
-      this.camera.position.fromArray(walkStep(previous,this.yaw,forward,side,delta,this.canEnter));
+      const next=walkStep(previous,this.yaw,forward,side,delta,this.canEnter);
+      this.camera.position.fromArray(next);
+      if(this.autoMoving){
+        this.autoSeconds+=clamp(delta,0,.1);
+        const intended=walkStep(previous,this.yaw,forward,side,delta);
+        if(Math.hypot(next[0]-intended[0],next[2]-intended[2])>.001)this.setAutoMoving(false,'obstacle');
+      }
       if(!this.moved && this.camera.position.distanceToSquared(new Vector3(...previous))>.0001){this.moved=true;this.onMove();}
     }
     this.orient();
