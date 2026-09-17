@@ -98,7 +98,7 @@ export class ScheduledDiorama extends DioramaBase {
         this.projector.copy(label.position).project(this.camera);
         return { name: label.name, x: (this.projector.x * 0.5 + 0.5) * this.host.clientWidth, y: (-0.5 * this.projector.y + 0.5) * this.host.clientHeight, visible: Math.abs(this.projector.x) < 0.94 && Math.abs(this.projector.y) < 0.94 && this.projector.z < 1 };
       }) : [];
-      this.onFrame({ labels, heading: this.cameraHeading(), fps: this.fps, activeTrains: this.activeTrains, period: this.daylight.period, daylightCaption: this.daylight.caption, daylightProgress: this.daylight.phase / 3 });
+      this.onFrame({ labels, walkPosition: this.walkCamera.active ? { x: this.camera.position.x, z: this.camera.position.z, yaw: this.walkCamera.yaw } : null, heading: this.cameraHeading(), fps: this.fps, activeTrains: this.activeTrains, period: this.daylight.period, daylightCaption: this.daylight.caption, daylightProgress: this.daylight.phase / 3 });
     }
     this.animation = requestAnimationFrame(this.animate);
   }

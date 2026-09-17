@@ -2,11 +2,12 @@ import React from 'react';
 
 const directions = [['forward','前へ','↑'],['left','左へ','←'],['back','後ろへ','↓'],['right','右へ','→']];
 
-export default function WalkControls({ period, onLight, autoWalking, onAutoWalk, controller, onHome, onSpots, onShare, onBookmark, onExit }) {
+export default function WalkControls({ mapOpen, onMap, period, onLight, autoWalking, onAutoWalk, controller, onHome, onSpots, onShare, onBookmark, onExit }) {
   return <section className="walk-panel glass" aria-label="自由散策の操作">
     <div className="walk-heading"><div><span>STREET WALK</span><strong>東京駅を、歩こう。</strong></div><button onClick={onExit}>散策を終える</button></div>
     <p>景色をドラッグして見回す<br /><span>方向ボタンで移動 / 「自動」なら手を離しても前へ</span></p>
     <div className="walk-pad" role="group" aria-label="移動方向">
+      <button className="walk-map-toggle" aria-label={mapOpen ? '散策マップを隠す' : '散策マップを表示'} aria-expanded={mapOpen} aria-controls="walk-map" aria-pressed={mapOpen} onClick={onMap}>地図</button>
       {directions.map(([action,label,icon])=><button key={action} className={`walk-${action}`} aria-label={label}
         onPointerDown={event=>{event.preventDefault();event.currentTarget.setPointerCapture(event.pointerId);const walk=controller();walk?.setAction(action,true);walk?.update(.1);}}
         onPointerUp={()=>controller()?.setAction(action,false)} onPointerCancel={()=>controller()?.setAction(action,false)} onLostPointerCapture={()=>controller()?.setAction(action,false)}

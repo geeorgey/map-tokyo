@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mjs';
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import WalkControls from './WalkControls.jsx';
+import WalkMap from './WalkMap.jsx';
 import { WALK_SPOTS } from './data/walk-spots.js';
 import TrainDialog from './TrainInspector.jsx';
 import updates from './data/updates.json';
@@ -95,6 +96,7 @@ export default function App() {
   const [roofHidden, setRoofHidden] = useState(false);
   const [follow, setFollow] = useState(false);
   const [walking, setWalking] = useState(false);
+  const [walkMapOpen, setWalkMapOpen] = useState(false);
   const [menusHidden, setMenusHidden] = useState(() => window.matchMedia('(max-width:600px)').matches);
   const [frame, setFrame] = useState({ labels: [], heading: 0, fps: 0, activeTrains: [] });
   const [now, setNow] = useState(() => clock.now());
@@ -202,6 +204,10 @@ export default function App() {
     engine.current?.setWalk(true);setWalking(true);setFollow(false);setRotate(false);setView(-1);setViewsOpen(false);
     engine.current?.renderer.domElement.focus({preventScroll:true});trackFeature('walk_start');
   }
+  function showWalkMap(open) {
+    engine.current?.walkCamera.clear('map');setWalkMapOpen(open);if(open)setMenusHidden(true);
+    trackFeature(open ? 'walk_map_open' : 'walk_map_close');
+  }
   function walkHome() {engine.current?.walkCamera.home();engine.current?.renderer.domElement.focus({preventScroll:true});trackFeature('walk_home');}
   function openSpots() {trackFeature('spot_open');setDialog('spots');}
   function visitSpot(spot) {
@@ -274,6 +280,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'walk-map') {startWalk();setDialog(null);setMenusHidden(true);showWalkMap(true);return;}
     if (action === 'walk-light') {startWalk();setDialog(null);setMenusHidden(true);notify('パッドの「昼・夕・夜」で、同じ景色の光を比べられます。');return;}
     if (action === 'auto-walk') {startWalk();setDialog(null);setMenusHidden(true);notify('パッド右上の「自動」で前へ。ドラッグで見回せます。');return;}
     if (action === 'bookmarks') {startWalk();openBookmarks(true);return;}
@@ -290,12 +297,13 @@ export default function App() {
   return <main className={`app ${frame.period || period} ${walking ? 'is-walking' : ''} ${menusHidden ? 'menus-hidden' : ''}`}>
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
-    <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
+    <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
     {menusHidden && <button className="spots-shortcut glass" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>見どころへ ↗</button>}
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
     <div className="top-controls"><div className="daylight-controls"><div className="period glass" role="group" aria-label="時間帯">{[['day', '昼'], ['evening', '夕'], ['night', '夜']].map(([value, label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}</div><button className="daylight-cycle glass" disabled={!ready} aria-pressed={daylightCycle} onClick={toggleDaylight} title="約90秒で昼・夕・夜を巡ります。もう一度押すと、その光で止まります。"><span>{daylightCycle ? '光の移ろいを止める' : '光の移ろい'}</span><small>{daylightCycle ? frame.daylightCaption : '昼・夕・夜を自動で'}</small>{daylightCycle && <i aria-hidden="true" style={{transform:`scaleX(${frame.daylightProgress || 0})`}}/>}</button></div><button className="capture glass icon" onClick={saveScene} disabled={!ready} aria-label="風景をPNGで保存" title="風景をPNGで保存">↧</button></div>
     <nav className="updates-menu glass" aria-label="サイトメニュー"><button className="walk-entry" disabled={!ready} aria-pressed={walking} onClick={() => walking ? selectView(0) : startWalk()}>{walking ? '上から眺める' : '自由に歩く'} <span>↗</span></button><button onClick={openUpdates} aria-haspopup="dialog">更新履歴 <span>↗</span></button></nav>
-    {walking && <WalkControls period={daylightCycle ? null : period} onLight={selectWalkLight} autoWalking={autoWalking} onAutoWalk={() => {const walk=engine.current?.walkCamera;walk?.setAutoMoving(!walk.autoMoving);}} controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onShare={openSceneLink} onBookmark={() => openBookmarks(true)} onExit={() => selectView(0)} />}
+    {walking && walkMapOpen && <WalkMap pose={frame.walkPosition} />}
+    {walking && <WalkControls mapOpen={walkMapOpen} onMap={() => showWalkMap(!walkMapOpen)} period={daylightCycle ? null : period} onLight={selectWalkLight} autoWalking={autoWalking} onAutoWalk={() => {const walk=engine.current?.walkCamera;walk?.setAutoMoving(!walk.autoMoving);}} controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onShare={openSceneLink} onBookmark={() => openBookmarks(true)} onExit={() => selectView(0)} />}
     <aside className="time-stack">
       <ClockPanel now={now} onChange={refresh} data={data} context={context} />
       <section className="departure-panel glass" aria-label="次の発車">
