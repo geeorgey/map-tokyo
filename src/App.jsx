@@ -3,6 +3,7 @@ import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mj
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import WalkControls from './WalkControls.jsx';
 import WalkMap from './WalkMap.jsx';
+import { readWalkResume, saveWalkResume } from './walk-resume.mjs';
 import { WALK_SPOTS } from './data/walk-spots.js';
 import TrainDialog from './TrainInspector.jsx';
 import updates from './data/updates.json';
@@ -97,6 +98,8 @@ export default function App() {
   const [follow, setFollow] = useState(false);
   const [walking, setWalking] = useState(false);
   const [walkMapOpen, setWalkMapOpen] = useState(false);
+  const [resumeHash, setResumeHash] = useState('');
+  const savedResumeHash = useRef('');
   const [menusHidden, setMenusHidden] = useState(() => window.matchMedia('(max-width:600px)').matches);
   const [frame, setFrame] = useState({ labels: [], heading: 0, fps: 0, activeTrains: [] });
   const [now, setNow] = useState(() => clock.now());
@@ -184,6 +187,17 @@ export default function App() {
     applyLink();window.addEventListener('hashchange',applyLink);
     return () => window.removeEventListener('hashchange',applyLink);
   }, [ready]);
+  useEffect(() => {
+    if (!ready) return;
+    let hash = null;
+    try { hash = readWalkResume(window.localStorage, engine.current.walkCamera.canEnter); } catch { /* Storage may be disabled. */ }
+    savedResumeHash.current = hash || '';setResumeHash(hash || '');
+    const interval = setInterval(rememberWalk, 1000);
+    const onHidden = () => { if (document.hidden) rememberWalk(); };
+    window.addEventListener('pagehide', rememberWalk);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => { clearInterval(interval); window.removeEventListener('pagehide', rememberWalk); document.removeEventListener('visibilitychange', onHidden); };
+  }, [ready]);
   useEffect(() => { engine.current?.setEvents(events); }, [events, ready]);
   useEffect(() => { if (engine.current) engine.current.controls.autoRotate = rotate; }, [rotate, ready]);
   useEffect(() => { if (engine.current) engine.current.labelsVisible = labels; }, [labels, ready]);
@@ -225,6 +239,24 @@ export default function App() {
   function currentSceneLink() {
     const current=engine.current,walk=current?.walkCamera;
     return walk?.active ? makeSceneLink(window.location.origin,{x:walk.camera.position.x,z:walk.camera.position.z,yaw:walk.yaw,pitch:walk.pitch,light:current.daylight.phase},walk.canEnter) : null;
+  }
+  function rememberWalk() {
+    const link = currentSceneLink();
+    if (!link) return;
+    const hash = new URL(link).hash;
+    if (hash === savedResumeHash.current) return;
+    try {
+      if (saveWalkResume(window.localStorage, hash, engine.current.walkCamera.canEnter)) {
+        savedResumeHash.current = hash;setResumeHash(hash);
+      }
+    } catch { /* Walking remains available without browser storage. */ }
+  }
+  function resumeWalk() {
+    let hash = null;
+    try { hash = readWalkResume(window.localStorage, engine.current.walkCamera.canEnter); } catch { /* Storage may be disabled. */ }
+    const pose = hash && parseSceneLink(hash, engine.current.walkCamera.canEnter);
+    if (!pose) {setResumeHash('');notify('再開できる記録がありません。見どころから散策できます。');return;}
+    restoreScene(pose);trackFeature('walk_resume');notify('散策のつづきに戻りました。ここから、また歩けます。');
   }
   function openBookmarks(saveCurrent=false) {
     setBookmarkError('');setBookmarkStatus('');setBookmarkHash('');
@@ -269,10 +301,10 @@ export default function App() {
     trackFeature('walk_light_select', { period: value });
   }
   function toggleDaylight() { const next = !daylightCycle; setPeriod(null); setDaylightCycle(next); engine.current?.setDaylightCycle(next); }
-  function selectView(index) { engine.current?.setView(index); setWalking(false); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
+  function selectView(index) { rememberWalk();engine.current?.setView(index); setWalking(false); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
   function seek(event) { clock.seek(event.at - 30000); clock.setPaused(false); refresh(); setRoofHidden(true); }
   function followTrain() {
-    if(walking){engine.current?.setWalk(false);setWalking(false);}
+    if(walking){rememberWalk();engine.current?.setWalk(false);setWalking(false);}
     if (follow) { engine.current?.setFollow(false); setFollow(false); return; }
     if (engine.current?.setFollow(true)) { setFollow(true); setView(-1); setRotate(false); setRoofHidden(true); }
     else notify('現在、N700系は画面内にいません。時刻表から次の発車へ移動できます。');
@@ -280,6 +312,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'walk-resume') {if(resumeHash)resumeWalk();else {startWalk();setDialog(null);setMenusHidden(true);notify('散策すると、このブラウザに位置・向き・光を自動で覚えます。');}return;}
     if (action === 'walk-map') {startWalk();setDialog(null);setMenusHidden(true);showWalkMap(true);return;}
     if (action === 'walk-light') {startWalk();setDialog(null);setMenusHidden(true);notify('パッドの「昼・夕・夜」で、同じ景色の光を比べられます。');return;}
     if (action === 'auto-walk') {startWalk();setDialog(null);setMenusHidden(true);notify('パッド右上の「自動」で前へ。ドラッグで見回せます。');return;}
@@ -298,6 +331,7 @@ export default function App() {
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
+    {!walking && resumeHash && <button className="resume-shortcut glass" disabled={!ready} onClick={resumeWalk}>散策のつづき ↗</button>}
     {menusHidden && <button className="spots-shortcut glass" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>見どころへ ↗</button>}
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
     <div className="top-controls"><div className="daylight-controls"><div className="period glass" role="group" aria-label="時間帯">{[['day', '昼'], ['evening', '夕'], ['night', '夜']].map(([value, label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}</div><button className="daylight-cycle glass" disabled={!ready} aria-pressed={daylightCycle} onClick={toggleDaylight} title="約90秒で昼・夕・夜を巡ります。もう一度押すと、その光で止まります。"><span>{daylightCycle ? '光の移ろいを止める' : '光の移ろい'}</span><small>{daylightCycle ? frame.daylightCaption : '昼・夕・夜を自動で'}</small>{daylightCycle && <i aria-hidden="true" style={{transform:`scaleX(${frame.daylightProgress || 0})`}}/>}</button></div><button className="capture glass icon" onClick={saveScene} disabled={!ready} aria-label="風景をPNGで保存" title="風景をPNGで保存">↧</button></div>
@@ -345,9 +379,11 @@ export default function App() {
     </Modal>}
     {dialog === 'spots' && <Modal title="どの景色から歩く？" onClose={() => setDialog(null)}>
       <p>気になる場所を選ぶと、地上の目線へ。着いた先から自由に歩けます。</p>
+      {resumeHash && <button className="resume-entry" onClick={resumeWalk}><strong>散策のつづき ↗</strong><small>最後に歩いた場所・向き・光から再開</small></button>}
       <div className="spot-list">{WALK_SPOTS.map((spot,index)=><button key={spot.id} onClick={() => visitSpot(spot)}><span className="spot-number">0{index+1}</span><span><strong>{spot.title}</strong><small>{spot.caption}</small></span><span aria-hidden="true">↗</span></button>)}</div>
       <button className="bookmarks-entry" onClick={() => openBookmarks(false)}>景色のしおり ↗</button>
       <p className="data-note">今回は駅舎の外の3か所。駅の中は今後の更新で。</p>
+      <p className="data-note">散策のつづきは、このブラウザに自動保存します。列車は再開時の時計で動きます。</p>
     </Modal>}
     {dialog === 'updates' && <Modal title="東京鉄道景の更新履歴" onClose={() => setDialog(null)} wide>
       <p className="updates-intro">街が少しずつ変わっていく。その日の新しい楽しみ方を、ここから。</p>
