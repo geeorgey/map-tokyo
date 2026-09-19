@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createWorld } from './world.js';
+import { FreeCamera } from './free-camera.js';
 import { WalkCamera, createWalkBoundary } from './walk-camera.js';
 import { map } from './urban.js';
 import { samplePolyline } from './urban.js';
@@ -30,12 +31,15 @@ export class Viewer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.75));
     this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.12;
-    this.renderer.domElement.setAttribute('aria-label','東京駅周辺の3Dジオラマ。ドラッグで回転、右ドラッグで移動、スクロールで拡大。');
+    this.renderer.domElement.setAttribute('aria-label','東京駅周辺の3Dジオラマ。ドラッグで見回し、WASDで移動、Qで下降、Eで上昇、スクロールで前後へ。');
     this.renderer.domElement.tabIndex=0;
     host.appendChild(this.renderer.domElement);
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);
     this.controls.target.fromArray(views[0].target);this.controls.enableDamping=true;this.controls.dampingFactor=.065;this.controls.minDistance=20;this.controls.maxDistance=1800;
-    this.controls.maxPolarAngle=Math.PI*.46;this.controls.minPolarAngle=.1;this.controls.autoRotateSpeed=.32;this.controls.zoomSpeed=.8;this.controls.panSpeed=.7;
+    this.controls.maxPolarAngle=Math.PI-.02;this.controls.minPolarAngle=.02;this.controls.autoRotateSpeed=.32;this.controls.zoomSpeed=.8;this.controls.panSpeed=.7;
+    this.controls.update();
+    this.freeMode=true;this.freeCamera=new FreeCamera(this.camera,this.renderer.domElement,()=>this.onFreeMove?.());
+    this.freeCamera.start();this.controls.enabled=false;
     this.followCamera=new FollowCamera(this.camera,this.controls);
     this.controls.addEventListener('start',()=>{this.transition=null;this.followCamera.interruptTransition();});
     this.ambient=new THREE.HemisphereLight('#d8e8ef','#817f66',2.1);this.scene.add(this.ambient);
@@ -54,9 +58,9 @@ export class Viewer {
   }
   resize() {const {clientWidth:w,clientHeight:h}=this.host;this.renderer.setSize(w,h);this.camera.aspect=w/h;this.camera.fov=this.walkCamera?.active?65:THREE.MathUtils.clamp(42*.77/(w/h),42,64);this.camera.updateProjectionMatrix();}
   setWalk(enabled) {
-    this.renderer.domElement.setAttribute('aria-label',enabled?'東京駅周辺の自由散策。ドラッグで見回し、WASD・矢印キーで移動。':'東京駅周辺の3Dジオラマ。ドラッグで回転、右ドラッグで移動、スクロールで拡大。');
+    this.renderer.domElement.setAttribute('aria-label',enabled?'東京駅周辺の自由散策。ドラッグで見回し、WASD・矢印キーで移動。':this.freeMode?'東京駅周辺の3Dジオラマ。ドラッグで見回し、WASDで移動、スクロールで前後へ。':'東京駅周辺の3Dジオラマ。ドラッグで周回、スクロールで拡大。');
     if(enabled){
-      this.setFollow(false);this.transition=null;this.controls.autoRotate=false;
+      this.setFollow(false);this.freeCamera.stop();this.transition=null;this.controls.autoRotate=false;
       this.controls.enabled=false;this.camera.near=.15;this.walkCamera.start();
     }else{
       this.walkCamera.stop();this.controls.enabled=true;this.camera.near=1;
@@ -65,15 +69,39 @@ export class Viewer {
     }
     this.resize();
   }
+  clearOrbitMomentum() {
+    const position=this.camera.position.clone(),quaternion=this.camera.quaternion.clone();
+    const autoRotate=this.controls.autoRotate;
+    this.controls.autoRotate=false;this.controls.enableDamping=false;this.controls.update();
+    this.controls.enableDamping=true;this.controls.autoRotate=autoRotate;
+    this.camera.position.copy(position);this.camera.quaternion.copy(quaternion);
+  }
+  setFreeMode(enabled) {
+    this.clearOrbitMomentum();
+    this.freeMode=enabled;this.setFollow(false);this.transition=null;
+    this.controls.autoRotate=false;
+    this.freeCamera.stop();
+    this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()),60);
+    this.controls.enabled=!enabled;
+    if(enabled)this.freeCamera.start();
+    this.renderer.domElement.setAttribute('aria-label',enabled?'東京駅周辺の3Dジオラマ。ドラッグで見回し、WASDで移動、Qで下降、Eで上昇、スクロールで前後へ。':'東京駅周辺の3Dジオラマ。ドラッグで周回、右ドラッグで移動、スクロールで拡大。');
+  }
   updateCamera(delta) {
     if(this.walkCamera.active){this.walkCamera.update(delta);return;}
-    this.controls.update(delta);
-    this.controls.target.clamp(new THREE.Vector3(-730,0,-840),new THREE.Vector3(710,240,850));
+    const free=this.freeMode&&!this.followTrain&&!this.transition;
+    if(free){
+      if(!this.freeCamera.active){this.clearOrbitMomentum();this.freeCamera.start();}
+      this.controls.enabled=false;this.freeCamera.update(delta);
+      this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()),60);
+    }else{
+      this.freeCamera.stop();this.controls.enabled=true;this.controls.update(delta);
+    }
   }
-  cameraHeading() {return this.walkCamera.active?this.walkCamera.yaw*180/Math.PI:this.controls.getAzimuthalAngle()*180/Math.PI;}
+  cameraHeading() {return new THREE.Euler().setFromQuaternion(this.camera.quaternion,'YXZ').y*180/Math.PI;}
   setFollow(enabled) {
     this.followTrain=null;this.followCamera.stop();
     if(!enabled)return false;
+    this.freeCamera.stop();this.controls.enabled=true;
     const train=this.world.trains.find(t=>t.kind==='shinkansen'&&t.type==='n700');
     if(!train)return false;
     train.initialPhase=Math.max(0,train.travel-18)-this.time;
@@ -88,8 +116,9 @@ export class Viewer {
     if(views[index].name==='新幹線')for(const train of this.world.trains){
       if(train.kind==='shinkansen')train.initialPhase=train.travel+(train.type==='n700'?-5:2)-this.time;
     }
+    this.clearOrbitMomentum();this.freeCamera.stop();this.controls.enabled=true;
     const v=views[index];
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches){this.camera.position.fromArray(v.position);this.controls.target.fromArray(v.target);this.transition=null;return;}
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){this.camera.position.fromArray(v.position);this.controls.target.fromArray(v.target);this.camera.lookAt(this.controls.target);this.transition=null;return;}
     this.transition={start:performance.now(),from:this.camera.position.clone(),to:new THREE.Vector3(...v.position),targetFrom:this.controls.target.clone(),targetTo:new THREE.Vector3(...v.target)};
   }
   setPeriod(period) {
@@ -139,11 +168,12 @@ export class Viewer {
     if(this.transition) {
       const t=Math.min((now-this.transition.start)/1250,1),s=t*t*(3-2*t);
       this.camera.position.lerpVectors(this.transition.from,this.transition.to,s);this.controls.target.lerpVectors(this.transition.targetFrom,this.transition.targetTo,s);
+      this.camera.lookAt(this.controls.target);
       if(t===1)this.transition=null;
     }
     this.updateCamera(dt);
     // Allocate shadow resolution to station detail when the viewer moves close.
-    const shadowRadius=this.camera.position.distanceTo(this.controls.target)<360?270:850;
+    const shadowRadius=(this.freeCamera.active?this.camera.position.y:this.camera.position.distanceTo(this.controls.target))<360?270:850;
     if(this.shadowRadius!==shadowRadius){
       this.shadowRadius=shadowRadius;
       Object.assign(this.sun.shadow.camera,{left:-shadowRadius,right:shadowRadius,top:shadowRadius,bottom:-shadowRadius});
@@ -167,7 +197,7 @@ export class Viewer {
     return {url:canvas.toDataURL('image/png'),filename:`tokyo-railway-${this.period}-${Date.now()}.png`};
   }
   dispose() {
-    this.disposed=true;cancelAnimationFrame(this.animation);this.observer.disconnect();this.walkCamera.dispose();this.controls.dispose();
+    this.disposed=true;cancelAnimationFrame(this.animation);this.observer.disconnect();this.walkCamera.dispose();this.freeCamera.dispose();this.controls.dispose();
     const geometries=new Set(),materials=new Set();
     this.scene.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.world.station.textures.forEach(t=>t.dispose());this.world.urban.textures.forEach(t=>t.dispose());this.renderer.domElement.removeEventListener('webglcontextlost',this.lost);this.renderer.dispose();this.renderer.domElement.remove();

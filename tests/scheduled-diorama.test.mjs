@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Group,Vector3} from 'three';
+import {Group,Vector3,PerspectiveCamera} from 'three';
 import {ScheduledDiorama} from '../src/diorama.mjs';
 import {Daylight} from '../src/engine/daylight.js';
 
@@ -14,8 +14,8 @@ test('scheduled rendering uses the selected clock while scenic lighting runs ind
     world:{trains:[{cars:[car],route:{points:[new Vector3(0,0,0),new Vector3(0,0,1000)],lengths:[0,1000]}}],cars:[],labels:[]},
     lanes:[[{id:'departure',at:departure}]],envelopes:[{stop:200,start:0,end:900,direction:1,dwell:60,arrival:90,departure:90}],
     daylight:new Daylight(),applyDaylight(){this.period=this.daylight.period;},
-    walkCamera:{active:false},
-    controls:{target:new Vector3(),update(){},getAzimuthalAngle:()=>0},camera:{position:new Vector3(0,1000,0)},
+    walkCamera:{active:false},freeCamera:{stop(){}},
+    controls:{target:new Vector3(),update(){},getAzimuthalAngle:()=>0},camera:(()=>{const c=new PerspectiveCamera();c.position.set(0,1000,0);return c;})(),
     renderer:{render(){}},scene:{},shadowRadius:850,frameCount:0,measureTime:0,uiTick:0,onFrame(){},
   });
   const previous=globalThis.requestAnimationFrame;

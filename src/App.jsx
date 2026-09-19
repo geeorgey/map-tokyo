@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mjs';
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
+import FreeControls from './FreeControls.jsx';
 import WalkControls from './WalkControls.jsx';
 import WalkMap from './WalkMap.jsx';
 import { readWalkResume, saveWalkResume } from './walk-resume.mjs';
@@ -96,6 +97,7 @@ export default function App() {
   const [rotate, setRotate] = useState(false);
   const [roofHidden, setRoofHidden] = useState(false);
   const [follow, setFollow] = useState(false);
+  const [freeMode, setFreeMode] = useState(true);
   const [walking, setWalking] = useState(false);
   const [walkMapOpen, setWalkMapOpen] = useState(false);
   const [resumeHash, setResumeHash] = useState('');
@@ -162,6 +164,7 @@ export default function App() {
     const raf = requestAnimationFrame(() => {
       try {
         engine.current = new ScheduledDiorama(viewport.current, frame => frame.error ? setError(frame.error) : setFrame(frame), clock);
+        engine.current.onFreeMove = () => trackFeature('free_camera_move');
         engine.current.onWalkMove = () => trackFeature('walk_move', { spot_id: engine.current?.walkCamera.spotId || 'free' });
         engine.current.walkCamera.onAutoChange = (enabled, detail) => {
           setAutoWalking(enabled);trackFeature(enabled ? 'walk_auto_start' : 'walk_auto_stop',detail);
@@ -169,7 +172,7 @@ export default function App() {
         };
         setReady(true);
         // A read-only diagnostic snapshot for local/browser regression checks.
-        window.railwayDiagnostics = () => ({ now: clock.now(), live: clock.live, speed: clock.speed, paused: clock.paused, camera: { mode: engine.current?.walkCamera.active ? 'walk' : 'orbit', position: engine.current?.camera.position.toArray(), quaternion: engine.current?.camera.quaternion.toArray() }, trains: engine.current?.world.trains.map((train, lane) => ({ lane, state: train.currentState, position: train.cars[0].position.toArray(), visible: train.cars[0].visible })) });
+        window.railwayDiagnostics = () => ({ now: clock.now(), live: clock.live, speed: clock.speed, paused: clock.paused, camera: { mode: engine.current?.walkCamera.active ? 'walk' : engine.current?.freeCamera.active ? 'free' : 'orbit', position: engine.current?.camera.position.toArray(), quaternion: engine.current?.camera.quaternion.toArray() }, trains: engine.current?.world.trains.map((train, lane) => ({ lane, state: train.currentState, position: train.cars[0].position.toArray(), visible: train.cars[0].visible })) });
       } catch (error) { console.error(error); setError('3D描画を開始できませんでした。WebGLが使えるブラウザで開いてください。'); }
     });
     return () => { cancelAnimationFrame(raf); engine.current?.dispose(); clearTimeout(toastTimer.current); delete window.railwayDiagnostics; };
@@ -212,7 +215,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  useEffect(() => { engine.current?.walkCamera.setSuspended(Boolean(dialog || capture)); }, [dialog, capture, ready]);
+  useEffect(() => { engine.current?.walkCamera.setSuspended(Boolean(dialog || capture));engine.current?.freeCamera.setSuspended(Boolean(dialog || capture)); }, [dialog, capture, ready]);
 
   function startWalk() {
     engine.current?.setWalk(true);setWalking(true);setFollow(false);setRotate(false);setView(-1);setViewsOpen(false);
@@ -294,6 +297,7 @@ export default function App() {
     try {await navigator.clipboard.writeText(sceneLink);setLinkCopied(true);trackFeature('scene_link_copy');}
     catch {setLinkCopied(false);notify('リンク欄を長押し、または選択してコピーしてください。');}
   }
+  function selectCameraMode(enabled) { engine.current?.setFreeMode(enabled);setFreeMode(enabled);setFollow(false);setRotate(false);trackFeature('camera_mode_select',{mode:enabled?'free':'orbit'}); }
   function selectPeriod(value) { setPeriod(value); setDaylightCycle(false); engine.current?.setPeriod(value); }
   function selectWalkLight(value) {
     engine.current?.walkCamera.clear('lighting');
@@ -312,6 +316,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'free-camera') {if(walking)selectView(0);selectCameraMode(true);setDialog(null);return;}
     if (action === 'walk-resume') {if(resumeHash)resumeWalk();else {startWalk();setDialog(null);setMenusHidden(true);notify('散策すると、このブラウザに位置・向き・光を自動で覚えます。');}return;}
     if (action === 'walk-map') {startWalk();setDialog(null);setMenusHidden(true);showWalkMap(true);return;}
     if (action === 'walk-light') {startWalk();setDialog(null);setMenusHidden(true);notify('パッドの「昼・夕・夜」で、同じ景色の光を比べられます。');return;}
@@ -331,6 +336,8 @@ export default function App() {
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
+    {!walking && <button className="camera-mode glass" disabled={!ready} aria-label={freeMode?'カメラ操作を周回に切り替え':'カメラ操作を自由移動に切り替え'} onClick={()=>selectCameraMode(!freeMode)}>{freeMode?'自由移動':'周回操作'} ⇄</button>}
+    {!walking && freeMode && !follow && <FreeControls controller={()=>engine.current?.freeCamera} />}
     {!walking && resumeHash && <button className="resume-shortcut glass" disabled={!ready} onClick={resumeWalk}>散策のつづき ↗</button>}
     {menusHidden && <button className="spots-shortcut glass" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>見どころへ ↗</button>}
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
@@ -348,8 +355,8 @@ export default function App() {
     </aside>
     <div className="scene-labels" aria-hidden={!labels}>{frame.labels.filter(label => label.visible).map(label => <span key={label.name} style={{ left: label.x, top: label.y }}>{label.name}</span>)}</div>
     <nav className={`viewpoints glass ${viewsOpen ? 'expanded' : ''}`} aria-label="視点を選択"><button className="views-disclosure" aria-expanded={viewsOpen} onClick={() => setViewsOpen(value => !value)}>視点・車両 <span>{viewsOpen ? '−' : '+'}</span></button><div className="view-options"><div className="panel-title">VIEWPOINT</div><button className="spots-menu" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>散策の見どころ ↗</button>{VIEWPOINTS.map((item, index) => <button key={item.name} aria-pressed={view === index} onClick={() => selectView(index)}><span className="view-num">0{index + 1}</span>{item.name}</button>)}<button className="follow-train" disabled={!ready} aria-pressed={follow} onClick={followTrain}>{follow ? 'N700系の追従を解除' : '新幹線を追う'}</button><button className="roof-toggle" aria-pressed={roofHidden} onClick={() => setRoofHidden(value => !value)}>ホーム屋根を隠す</button><button className="inspect-train" onClick={() => setDialog('train')}>新幹線の車両詳細 ↗</button></div></nav>
-    <div className="playback glass" role="toolbar" aria-label="描画コントロール"><button className="icon play" onClick={() => { clock.setPaused(!clock.paused); refresh(); }} aria-label={clock.paused ? '列車と時計を再開' : '列車と時計を一時停止'}>{clock.paused ? '▶' : 'Ⅱ'}</button><button className="speed" onClick={() => { clock.setSpeed(SPEEDS[(SPEEDS.indexOf(clock.speed) + 1) % SPEEDS.length]); refresh(); }} aria-label={`時計速度 ${clock.speed}倍。クリックで変更`}>{clock.speed}<span>×</span></button><i /><button disabled={walking} aria-pressed={rotate} onClick={() => setRotate(value => !value)}>自動旋回</button><i /><button aria-pressed={labels} onClick={() => setLabels(value => !value)}>ラベル</button></div>
-    <aside className="orientation"><button className="compass" title="東京駅全景に戻す（0）" aria-label="東京駅全景に戻す" onClick={() => selectView(0)}><span className="north">N</span><svg viewBox="0 0 80 80" style={{ transform: `rotate(${-frame.heading}deg)` }}><circle cx="40" cy="40" r="32" /><path className="needle" d="M40 17L46 45L40 41L34 45Z" /><path className="needle-back" d="M40 63L46 45L40 41L34 45Z" /></svg></button><p>ドラッグで回転 / スクロールで拡大</p><div className="footnote"><span>右ドラッグで移動</span><button onClick={() => setDialog('about')} aria-label="このジオラマについて">ⓘ</button></div></aside>
+    <div className="playback glass" role="toolbar" aria-label="描画コントロール"><button className="icon play" onClick={() => { clock.setPaused(!clock.paused); refresh(); }} aria-label={clock.paused ? '列車と時計を再開' : '列車と時計を一時停止'}>{clock.paused ? '▶' : 'Ⅱ'}</button><button className="speed" onClick={() => { clock.setSpeed(SPEEDS[(SPEEDS.indexOf(clock.speed) + 1) % SPEEDS.length]); refresh(); }} aria-label={`時計速度 ${clock.speed}倍。クリックで変更`}>{clock.speed}<span>×</span></button><i /><button disabled={walking || freeMode} aria-pressed={rotate} onClick={() => setRotate(value => !value)}>自動旋回</button><i /><button aria-pressed={labels} onClick={() => setLabels(value => !value)}>ラベル</button></div>
+    <aside className="orientation"><button className="compass" title="東京駅全景に戻す（0）" aria-label="東京駅全景に戻す" onClick={() => selectView(0)}><span className="north">N</span><svg viewBox="0 0 80 80" style={{ transform: `rotate(${-frame.heading}deg)` }}><circle cx="40" cy="40" r="32" /><path className="needle" d="M40 17L46 45L40 41L34 45Z" /><path className="needle-back" d="M40 63L46 45L40 41L34 45Z" /></svg></button><p>{freeMode&&!follow?'ドラッグで見回す / スクロールで前後へ':'ドラッグで周回 / スクロールで拡大'}</p><div className="footnote"><span>{freeMode&&!follow?'W/S 前後 · A/D 左右 · Q/E 上下 · Shift 加速':'右ドラッグで移動'}</span><button onClick={() => setDialog('about')} aria-label="このジオラマについて">ⓘ</button></div></aside>
     <a className="map-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
     {!ready && !error && <div className="loading"><span className="loader" /><p>東京の街を組み立てています</p></div>}
     {error && <div className="error" role="alert"><p>{error}</p><button onClick={() => location.reload()}>再読み込み</button></div>}
@@ -396,7 +403,7 @@ export default function App() {
     </Modal>}
     {dialog === 'train' && <TrainDialog onClose={() => setDialog(null)} />}
     {dialog === 'timetable' && data && <TimetableDialog data={data} events={events} now={now} context={context} onClose={() => setDialog(null)} onSeek={seek} />}
-    {dialog === 'about' && <Modal title="鉄道のある街を、眺める。" onClose={() => setDialog(null)}><p>東京駅とその周辺を、小さな立体の街にしました。好きな角度から、電車が行き交う風景を楽しんでください。</p><dl><dt>自由散策</dt><dd>「自由に歩く」から開始。WASD・矢印キー、または画面の方向ボタンで移動。ドラッグで見回せます。</dd><dt>回転</dt><dd>左ドラッグ / 指1本</dd><dt>移動</dt><dd>右ドラッグ / 指2本</dd><dt>拡大・縮小</dt><dd>スクロール / ピンチ</dd><dt>時計の停止・再開</dt><dd>Spaceキー</dd><dt>現在の日時に戻る</dt><dd>「現在時刻に戻る」</dd><dt>全景に戻る</dt><dd>0キー / コンパス</dd></dl><p>昼・夕・夜は風景の見た目を切り替えます。時計とは独立しているので、好きな景色で時刻表の運行を眺められます。「光の移ろい」は約90秒で昼・夕・夜を巡り、再度押すとその光で止まります。</p><p className="data-note">東京駅の7路線・方向を6本の代表線路で表示しています。発車時刻と運行日にはJR東日本掲載時刻表を使用。番線・車両形式・入線と停車時間は簡略化し、同じ線路の列車が重なる場合は発車直後を優先します。遅延・運休・実際の列車位置には対応していません。</p><p className="data-note">地図データはOpenStreetMap。未登録の建物高や道路幅、駅舎の細部、中央線の高低差などは推定です。</p><p className="source-links"><a href="https://www.tokyostationcity.com/learning/station_building/" target="_blank" rel="noreferrer">駅舎の参考：Tokyo Station City ↗</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">地図データ：OpenStreetMap / ODbL ↗</a></p><div className="render-info">WebGL · Three.js <span>{frame.fps} fps</span></div></Modal>}
+    {dialog === 'about' && <Modal title="鉄道のある街を、眺める。" onClose={() => setDialog(null)}><p>東京駅とその周辺を、小さな立体の街にしました。好きな角度から、電車が行き交う風景を楽しんでください。</p><dl><dt>自由散策</dt><dd>「自由に歩く」から開始。WASD・矢印キー、または画面の方向ボタンで移動。ドラッグで見回せます。</dd><dt>自由移動（通常操作）</dt><dd>左ドラッグでその場から見回し、スクロールで画面の中心に向かって前後へ。W/Sで前後、A/Dで左右、Qで下降・Eで上昇。Shiftで加速。右ドラッグで平行移動。スマートフォンは方向ボタンを使います。空中移動には建物との衝突判定はありません。</dd><dt>周回操作への切替</dt><dd>「自由移動 ⇄」で従来の周回操作に切り替えられます。</dd><dt>周回中の回転</dt><dd>左ドラッグ / 指1本</dd><dt>移動</dt><dd>右ドラッグ / 指2本</dd><dt>拡大・縮小</dt><dd>スクロール / ピンチ</dd><dt>時計の停止・再開</dt><dd>Spaceキー</dd><dt>現在の日時に戻る</dt><dd>「現在時刻に戻る」</dd><dt>全景に戻る</dt><dd>0キー / コンパス</dd></dl><p>昼・夕・夜は風景の見た目を切り替えます。時計とは独立しているので、好きな景色で時刻表の運行を眺められます。「光の移ろい」は約90秒で昼・夕・夜を巡り、再度押すとその光で止まります。</p><p className="data-note">東京駅の7路線・方向を6本の代表線路で表示しています。発車時刻と運行日にはJR東日本掲載時刻表を使用。番線・車両形式・入線と停車時間は簡略化し、同じ線路の列車が重なる場合は発車直後を優先します。遅延・運休・実際の列車位置には対応していません。</p><p className="data-note">地図データはOpenStreetMap。未登録の建物高や道路幅、駅舎の細部、中央線の高低差などは推定です。</p><p className="source-links"><a href="https://www.tokyostationcity.com/learning/station_building/" target="_blank" rel="noreferrer">駅舎の参考：Tokyo Station City ↗</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">地図データ：OpenStreetMap / ODbL ↗</a></p><div className="render-info">WebGL · Three.js <span>{frame.fps} fps</span></div></Modal>}
     {capture && <Modal title="この風景を持ち帰る" onClose={() => setCapture(null)} wide><img className="captured-scene" src={capture.url} alt="書き出した東京駅周辺の風景" /><a className="download-button" href={capture.url} download={capture.filename}>PNGをダウンロード</a></Modal>}
   </main>;
 }

@@ -23,6 +23,7 @@ export class ScheduledDiorama extends DioramaBase {
     if (!enabled) return false;
     const train = this.world.trains.find(candidate => candidate.type === 'n700');
     if (!train || !train.cars[0].visible) return false;
+    this.freeCamera?.stop();this.controls.enabled=true;
     this.followTrain = train;
     this.transition = null;
     this.controls.autoRotate = false;
@@ -75,10 +76,11 @@ export class ScheduledDiorama extends DioramaBase {
       const easing = fraction * fraction * (3 - 2 * fraction);
       this.camera.position.lerpVectors(this.transition.from, this.transition.to, easing);
       this.controls.target.lerpVectors(this.transition.targetFrom, this.transition.targetTo, easing);
+      this.camera.lookAt(this.controls.target);
       if (fraction === 1) this.transition = null;
     }
     this.updateCamera(delta);
-    const radius = this.camera.position.distanceTo(this.controls.target) < 360 ? 270 : 850;
+    const radius = (this.freeCamera?.active ? this.camera.position.y : this.camera.position.distanceTo(this.controls.target)) < 360 ? 270 : 850;
     if (this.shadowRadius !== radius) {
       this.shadowRadius = radius;
       Object.assign(this.sun.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius });
