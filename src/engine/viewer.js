@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createWorld } from './world.js';
+import { StationTour } from './station-tour.js';
 import { FreeCamera } from './free-camera.js';
 import { WalkCamera, createWalkBoundary } from './walk-camera.js';
 import { map } from './urban.js';
@@ -48,6 +49,7 @@ export class Viewer {
     this.sun.shadow.bias=-.00025;this.sun.shadow.normalBias=.7;this.scene.add(this.sun);
     this.world=createWorld(this.scene);
     this.walkCamera=new WalkCamera(this.camera,this.renderer.domElement,createWalkBoundary(map),()=>this.onWalkMove?.());
+    this.tour=new StationTour(index=>this.setView(index,true),state=>this.onTourChange?.(state));
     this.ground=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshStandardMaterial({color:'#a9bab8',roughness:1}));
     this.ground.rotation.x=-Math.PI/2;this.ground.position.y=-15;this.ground.receiveShadow=true;this.scene.add(this.ground);
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.resize();
@@ -58,6 +60,7 @@ export class Viewer {
   }
   resize() {const {clientWidth:w,clientHeight:h}=this.host;this.renderer.setSize(w,h);this.camera.aspect=w/h;this.camera.fov=this.walkCamera?.active?65:THREE.MathUtils.clamp(42*.77/(w/h),42,64);this.camera.updateProjectionMatrix();}
   setWalk(enabled) {
+    this.stopTour('walk');
     this.renderer.domElement.setAttribute('aria-label',enabled?'東京駅周辺の自由散策。ドラッグで見回し、WASD・矢印キーで移動。':this.freeMode?'東京駅周辺の3Dジオラマ。ドラッグで見回し、WASDで移動、スクロールで前後へ。':'東京駅周辺の3Dジオラマ。ドラッグで周回、スクロールで拡大。');
     if(enabled){
       this.setFollow(false);this.freeCamera.stop();this.transition=null;this.controls.autoRotate=false;
@@ -77,6 +80,7 @@ export class Viewer {
     this.camera.position.copy(position);this.camera.quaternion.copy(quaternion);
   }
   setFreeMode(enabled) {
+    this.stopTour('mode');
     this.clearOrbitMomentum();
     this.freeMode=enabled;this.setFollow(false);this.transition=null;
     this.controls.autoRotate=false;
@@ -86,7 +90,17 @@ export class Viewer {
     if(enabled)this.freeCamera.start();
     this.renderer.domElement.setAttribute('aria-label',enabled?'東京駅周辺の3Dジオラマ。ドラッグで見回し、WASDで移動、Qで下降、Eで上昇、スクロールで前後へ。':'東京駅周辺の3Dジオラマ。ドラッグで周回、右ドラッグで移動、スクロールで拡大。');
   }
+  startTour() {
+    if(this.walkCamera.active)this.setWalk(false);
+    this.setFollow(false);this.controls.autoRotate=false;this.tour.start();
+  }
+  stopTour(reason='manual') {
+    if(!this.tour?.active)return;
+    this.tour.stop(reason);this.transition=null;
+    this.clearOrbitMomentum();
+  }
   updateCamera(delta) {
+    this.tour?.update(delta);
     if(this.walkCamera.active){this.walkCamera.update(delta);return;}
     const free=this.freeMode&&!this.followTrain&&!this.transition;
     if(free){
@@ -99,6 +113,7 @@ export class Viewer {
   }
   cameraHeading() {return new THREE.Euler().setFromQuaternion(this.camera.quaternion,'YXZ').y*180/Math.PI;}
   setFollow(enabled) {
+    if(enabled)this.stopTour('follow');
     this.followTrain=null;this.followCamera.stop();
     if(!enabled)return false;
     this.freeCamera.stop();this.controls.enabled=true;
@@ -110,7 +125,8 @@ export class Viewer {
     this.followCamera.start(train.cars[0].position,performance.now(),matchMedia('(prefers-reduced-motion: reduce)').matches);
     return true;
   }
-  setView(index) {
+  setView(index,fromTour=false) {
+    if(!fromTour)this.stopTour('view');
     if(this.walkCamera.active)this.setWalk(false);
     this.setFollow(false);
     if(views[index].name==='新幹線')for(const train of this.world.trains){

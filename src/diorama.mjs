@@ -18,6 +18,7 @@ export class ScheduledDiorama extends DioramaBase {
     this.lanes = this.world.trains.map((_, lane) => events.filter(event => event.lane === lane));
   }
   setFollow(enabled) {
+    if(enabled)this.stopTour('follow');
     this.followTrain = null;
     this.followCamera.stop();
     if (!enabled) return false;

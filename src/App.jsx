@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mjs';
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
+import { TOUR_STOPS } from './engine/station-tour.js';
 import FreeControls from './FreeControls.jsx';
 import WalkControls from './WalkControls.jsx';
 import WalkMap from './WalkMap.jsx';
@@ -97,6 +98,7 @@ export default function App() {
   const [rotate, setRotate] = useState(false);
   const [roofHidden, setRoofHidden] = useState(false);
   const [follow, setFollow] = useState(false);
+  const [tour, setTour] = useState(null);
   const [freeMode, setFreeMode] = useState(true);
   const [walking, setWalking] = useState(false);
   const [walkMapOpen, setWalkMapOpen] = useState(false);
@@ -164,6 +166,13 @@ export default function App() {
     const raf = requestAnimationFrame(() => {
       try {
         engine.current = new ScheduledDiorama(viewport.current, frame => frame.error ? setError(frame.error) : setFrame(frame), clock);
+        engine.current.onTourChange = state => {
+          setTour(state.active ? state : null);
+          if(state.active){setView(TOUR_STOPS[state.step].view);if(state.step===1)setRoofHidden(true);}
+          if(state.reason==='start')trackFeature('tour_start');
+          else if(state.reason==='complete'){trackFeature('tour_complete');notify('ツアー完了。気になる方向へ、自由に動かしてみてください。');}
+          else if(!state.active)trackFeature('tour_stop',{reason:state.reason,step:state.step+1,seconds:Math.round(state.elapsed)});
+        };
         engine.current.onFreeMove = () => trackFeature('free_camera_move');
         engine.current.onWalkMove = () => trackFeature('walk_move', { spot_id: engine.current?.walkCamera.spotId || 'free' });
         engine.current.walkCamera.onAutoChange = (enabled, detail) => {
@@ -217,6 +226,22 @@ export default function App() {
 
   useEffect(() => { engine.current?.walkCamera.setSuspended(Boolean(dialog || capture));engine.current?.freeCamera.setSuspended(Boolean(dialog || capture)); }, [dialog, capture, ready]);
 
+  useEffect(() => {
+    if(!ready)return;
+    const canvas=engine.current.renderer.domElement;
+    const manual=()=>engine.current?.stopTour('manual');
+    const keyboard=e=>{if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Digit0','Escape'].includes(e.code))manual();};
+    const hidden=()=>{if(document.hidden)engine.current?.stopTour('hidden');};
+    const blur=()=>engine.current?.stopTour('blur');
+    canvas.addEventListener('pointerdown',manual,true);canvas.addEventListener('wheel',manual,true);
+    window.addEventListener('keydown',keyboard,true);window.addEventListener('blur',blur);document.addEventListener('visibilitychange',hidden);
+    return ()=>{canvas.removeEventListener('pointerdown',manual,true);canvas.removeEventListener('wheel',manual,true);window.removeEventListener('keydown',keyboard,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',hidden);};
+  },[ready]);
+  useEffect(()=>{if(dialog||capture)engine.current?.stopTour('dialog');},[dialog,capture]);
+  function startTour() {
+    rememberWalk();setWalking(false);setFollow(false);setRotate(false);setViewsOpen(false);setDialog(null);setMenusHidden(true);
+    engine.current?.startTour();
+  }
   function startWalk() {
     engine.current?.setWalk(true);setWalking(true);setFollow(false);setRotate(false);setView(-1);setViewsOpen(false);
     engine.current?.renderer.domElement.focus({preventScroll:true});trackFeature('walk_start');
@@ -316,6 +341,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'station-tour') {startTour();return;}
     if (action === 'free-camera') {if(walking)selectView(0);selectCameraMode(true);setDialog(null);return;}
     if (action === 'walk-resume') {if(resumeHash)resumeWalk();else {startWalk();setDialog(null);setMenusHidden(true);notify('散策すると、このブラウザに位置・向き・光を自動で覚えます。');}return;}
     if (action === 'walk-map') {startWalk();setDialog(null);setMenusHidden(true);showWalkMap(true);return;}
@@ -332,13 +358,15 @@ export default function App() {
   }
   async function saveScene() { try { setCapture(await engine.current.capture()); } catch { notify('画像を保存できませんでした。もう一度お試しください。'); } }
 
-  return <main className={`app ${frame.period || period} ${walking ? 'is-walking' : ''} ${menusHidden ? 'menus-hidden' : ''}`}>
+  return <main onPointerDownCapture={event=>{if(!event.target.closest('.tour-panel'))engine.current?.stopTour('manual');}} className={`app ${frame.period || period} ${walking ? 'is-walking' : ''} ${menusHidden ? 'menus-hidden' : ''}`}>
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
+    {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
+    {tour && <section className="tour-panel glass" aria-label="東京駅ツアー" aria-live="polite"><div><small>TOKYO STATION TOUR · {tour.step+1} / {TOUR_STOPS.length}</small><strong>{TOUR_STOPS[tour.step].title}</strong><p>{TOUR_STOPS[tour.step].caption}</p></div><button onClick={()=>engine.current?.stopTour('button')}>ここで止める</button></section>}
     {!walking && <button className="camera-mode glass" disabled={!ready} aria-label={freeMode?'カメラ操作を周回に切り替え':'カメラ操作を自由移動に切り替え'} onClick={()=>selectCameraMode(!freeMode)}>{freeMode?'自由移動':'周回操作'} ⇄</button>}
     {!walking && freeMode && !follow && <FreeControls controller={()=>engine.current?.freeCamera} />}
-    {!walking && resumeHash && <button className="resume-shortcut glass" disabled={!ready} onClick={resumeWalk}>散策のつづき ↗</button>}
+    {!walking && !tour && resumeHash && <button className="resume-shortcut glass" disabled={!ready} onClick={resumeWalk}>散策のつづき ↗</button>}
     {menusHidden && <button className="spots-shortcut glass" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>見どころへ ↗</button>}
     <header className="identity"><h1>東京鉄道景</h1><p>TOKYO RAILWAY DIORAMA</p><div>東京駅・丸の内</div></header>
     <div className="top-controls"><div className="daylight-controls"><div className="period glass" role="group" aria-label="時間帯">{[['day', '昼'], ['evening', '夕'], ['night', '夜']].map(([value, label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}</div><button className="daylight-cycle glass" disabled={!ready} aria-pressed={daylightCycle} onClick={toggleDaylight} title="約90秒で昼・夕・夜を巡ります。もう一度押すと、その光で止まります。"><span>{daylightCycle ? '光の移ろいを止める' : '光の移ろい'}</span><small>{daylightCycle ? frame.daylightCaption : '昼・夕・夜を自動で'}</small>{daylightCycle && <i aria-hidden="true" style={{transform:`scaleX(${frame.daylightProgress || 0})`}}/>}</button></div><button className="capture glass icon" onClick={saveScene} disabled={!ready} aria-label="風景をPNGで保存" title="風景をPNGで保存">↧</button></div>
@@ -403,7 +431,7 @@ export default function App() {
     </Modal>}
     {dialog === 'train' && <TrainDialog onClose={() => setDialog(null)} />}
     {dialog === 'timetable' && data && <TimetableDialog data={data} events={events} now={now} context={context} onClose={() => setDialog(null)} onSeek={seek} />}
-    {dialog === 'about' && <Modal title="鉄道のある街を、眺める。" onClose={() => setDialog(null)}><p>東京駅とその周辺を、小さな立体の街にしました。好きな角度から、電車が行き交う風景を楽しんでください。</p><dl><dt>自由散策</dt><dd>「自由に歩く」から開始。WASD・矢印キー、または画面の方向ボタンで移動。ドラッグで見回せます。</dd><dt>自由移動（通常操作）</dt><dd>左ドラッグでその場から見回し、スクロールで画面の中心に向かって前後へ。W/Sで前後、A/Dで左右、Qで下降・Eで上昇。Shiftで加速。右ドラッグで平行移動。スマートフォンは方向ボタンを使います。空中移動には建物との衝突判定はありません。</dd><dt>周回操作への切替</dt><dd>「自由移動 ⇄」で従来の周回操作に切り替えられます。</dd><dt>周回中の回転</dt><dd>左ドラッグ / 指1本</dd><dt>移動</dt><dd>右ドラッグ / 指2本</dd><dt>拡大・縮小</dt><dd>スクロール / ピンチ</dd><dt>時計の停止・再開</dt><dd>Spaceキー</dd><dt>現在の日時に戻る</dt><dd>「現在時刻に戻る」</dd><dt>全景に戻る</dt><dd>0キー / コンパス</dd></dl><p>昼・夕・夜は風景の見た目を切り替えます。時計とは独立しているので、好きな景色で時刻表の運行を眺められます。「光の移ろい」は約90秒で昼・夕・夜を巡り、再度押すとその光で止まります。</p><p className="data-note">東京駅の7路線・方向を6本の代表線路で表示しています。発車時刻と運行日にはJR東日本掲載時刻表を使用。番線・車両形式・入線と停車時間は簡略化し、同じ線路の列車が重なる場合は発車直後を優先します。遅延・運休・実際の列車位置には対応していません。</p><p className="data-note">地図データはOpenStreetMap。未登録の建物高や道路幅、駅舎の細部、中央線の高低差などは推定です。</p><p className="source-links"><a href="https://www.tokyostationcity.com/learning/station_building/" target="_blank" rel="noreferrer">駅舎の参考：Tokyo Station City ↗</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">地図データ：OpenStreetMap / ODbL ↗</a></p><div className="render-info">WebGL · Three.js <span>{frame.fps} fps</span></div></Modal>}
+    {dialog === 'about' && <Modal title="鉄道のある街を、眺める。" onClose={() => setDialog(null)}><p>東京駅とその周辺を、小さな立体の街にしました。好きな角度から、電車が行き交う風景を楽しんでください。</p><dl><dt>自由散策</dt><dd>「自由に歩く」から開始。WASD・矢印キー、または画面の方向ボタンで移動。ドラッグで見回せます。</dd><dt>24秒ツアー</dt><dd>駅舎・ホーム・街並みを8秒ずつ案内します。「ここで止める」、画面のドラッグ、移動キーで終了。その景色から自由操作を続けられます。時計や光の設定は変わりません。</dd><dt>自由移動（通常操作）</dt><dd>左ドラッグでその場から見回し、スクロールで画面の中心に向かって前後へ。W/Sで前後、A/Dで左右、Qで下降・Eで上昇。Shiftで加速。右ドラッグで平行移動。スマートフォンは方向ボタンを使います。空中移動には建物との衝突判定はありません。</dd><dt>周回操作への切替</dt><dd>「自由移動 ⇄」で従来の周回操作に切り替えられます。</dd><dt>周回中の回転</dt><dd>左ドラッグ / 指1本</dd><dt>移動</dt><dd>右ドラッグ / 指2本</dd><dt>拡大・縮小</dt><dd>スクロール / ピンチ</dd><dt>時計の停止・再開</dt><dd>Spaceキー</dd><dt>現在の日時に戻る</dt><dd>「現在時刻に戻る」</dd><dt>全景に戻る</dt><dd>0キー / コンパス</dd></dl><p>昼・夕・夜は風景の見た目を切り替えます。時計とは独立しているので、好きな景色で時刻表の運行を眺められます。「光の移ろい」は約90秒で昼・夕・夜を巡り、再度押すとその光で止まります。</p><p className="data-note">東京駅の7路線・方向を6本の代表線路で表示しています。発車時刻と運行日にはJR東日本掲載時刻表を使用。番線・車両形式・入線と停車時間は簡略化し、同じ線路の列車が重なる場合は発車直後を優先します。遅延・運休・実際の列車位置には対応していません。</p><p className="data-note">地図データはOpenStreetMap。未登録の建物高や道路幅、駅舎の細部、中央線の高低差などは推定です。</p><p className="source-links"><a href="https://www.tokyostationcity.com/learning/station_building/" target="_blank" rel="noreferrer">駅舎の参考：Tokyo Station City ↗</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">地図データ：OpenStreetMap / ODbL ↗</a></p><div className="render-info">WebGL · Three.js <span>{frame.fps} fps</span></div></Modal>}
     {capture && <Modal title="この風景を持ち帰る" onClose={() => setCapture(null)} wide><img className="captured-scene" src={capture.url} alt="書き出した東京駅周辺の風景" /><a className="download-button" href={capture.url} download={capture.filename}>PNGをダウンロード</a></Modal>}
   </main>;
 }
