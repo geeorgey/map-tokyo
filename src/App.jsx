@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mjs';
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import { TOUR_STOPS } from './engine/station-tour.js';
+import { createSceneDraw } from './scene-draw.mjs';
 import FreeControls from './FreeControls.jsx';
 import WalkControls from './WalkControls.jsx';
 import WalkMap from './WalkMap.jsx';
@@ -89,6 +90,8 @@ export default function App() {
   const viewport = useRef(null);
   const engine = useRef(null);
   const toastTimer = useRef(null);
+  const sceneDraw = useRef(null);
+  if (!sceneDraw.current) sceneDraw.current = createSceneDraw();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState('day');
@@ -238,6 +241,13 @@ export default function App() {
     return ()=>{canvas.removeEventListener('pointerdown',manual,true);canvas.removeEventListener('wheel',manual,true);window.removeEventListener('keydown',keyboard,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',hidden);};
   },[ready]);
   useEffect(()=>{if(dialog||capture)engine.current?.stopTour('dialog');},[dialog,capture]);
+  function drawScene() {
+    const scene = sceneDraw.current();
+    selectView(scene.view); selectPeriod(scene.period); setRoofHidden(scene.roofHidden);
+    setViewsOpen(false); setDialog(null); setMenusHidden(true);
+    trackFeature('scene_draw', { scene_id: scene.id });
+    notify(`${scene.title}。ここから自由に見回せます。`);
+  }
   function startTour() {
     rememberWalk();setWalking(false);setFollow(false);setRotate(false);setViewsOpen(false);setDialog(null);setMenusHidden(true);
     engine.current?.startTour();
@@ -341,6 +351,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'scene-draw') {drawScene();return;}
     if (action === 'station-tour') {startTour();return;}
     if (action === 'free-camera') {if(walking)selectView(0);selectCameraMode(true);setDialog(null);return;}
     if (action === 'walk-resume') {if(resumeHash)resumeWalk();else {startWalk();setDialog(null);setMenusHidden(true);notify('散策すると、このブラウザに位置・向き・光を自動で覚えます。');}return;}
@@ -362,6 +373,7 @@ export default function App() {
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
+    {!walking && !tour && <button className="scene-draw glass" disabled={!ready} onClick={drawScene} title="6つの視点と光から一景へ。時計はそのまま。">景色くじ ◇</button>}
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
     {tour && <section className="tour-panel glass" aria-label="東京駅ツアー" aria-live="polite"><div><small>TOKYO STATION TOUR · {tour.step+1} / {TOUR_STOPS.length}</small><strong>{TOUR_STOPS[tour.step].title}</strong><p>{TOUR_STOPS[tour.step].caption}</p></div><button onClick={()=>engine.current?.stopTour('button')}>ここで止める</button></section>}
     {!walking && <button className="camera-mode glass" disabled={!ready} aria-label={freeMode?'カメラ操作を周回に切り替え':'カメラ操作を自由移動に切り替え'} onClick={()=>selectCameraMode(!freeMode)}>{freeMode?'自由移動':'周回操作'} ⇄</button>}
