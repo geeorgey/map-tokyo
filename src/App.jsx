@@ -3,6 +3,7 @@ import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mj
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import { TOUR_STOPS } from './engine/station-tour.js';
 import { createSceneDraw } from './scene-draw.mjs';
+import { nextDeparture } from './departure-watch.mjs';
 import FreeControls from './FreeControls.jsx';
 import WalkControls from './WalkControls.jsx';
 import WalkMap from './WalkMap.jsx';
@@ -101,7 +102,9 @@ export default function App() {
   const [rotate, setRotate] = useState(false);
   const [roofHidden, setRoofHidden] = useState(false);
   const [follow, setFollow] = useState(false);
+  const [followName, setFollowName] = useState('N700系');
   const [tour, setTour] = useState(null);
+  const [watchedDeparture, setWatchedDeparture] = useState(null);
   const [freeMode, setFreeMode] = useState(true);
   const [walking, setWalking] = useState(false);
   const [walkMapOpen, setWalkMapOpen] = useState(false);
@@ -131,6 +134,8 @@ export default function App() {
   const requestedMonth = context.date.slice(0, 7);
   const events = useMemo(() => data ? eventsForDay(data, now) : [], [data, context.date]);
   const upcoming = events.filter(event => event.at > now).slice(0, 3);
+  const watchedToday = watchedDeparture?.date === context.date ? watchedDeparture : null;
+  const departureToWatch = nextDeparture(events, now, watchedToday?.at);
   const refresh = () => setNow(clock.now());
 
   function notify(message) { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 4500); }
@@ -342,15 +347,30 @@ export default function App() {
   function toggleDaylight() { const next = !daylightCycle; setPeriod(null); setDaylightCycle(next); engine.current?.setDaylightCycle(next); }
   function selectView(index) { rememberWalk();engine.current?.setView(index); setWalking(false); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
   function seek(event) { clock.seek(event.at - 30000); clock.setPaused(false); refresh(); setRoofHidden(true); }
+  function watchDeparture() {
+    const event = nextDeparture(events, clock.now(), watchedToday?.at);
+    if (!event) { notify('この運行日の残りの発車はありません。時刻表で日付を選べます。'); return; }
+    selectView(2); setRoofHidden(true); setViewsOpen(false); setDialog(null); setMenusHidden(true);
+    clock.seek(event.at - 5000); clock.setSpeed(1); clock.setPaused(false); refresh();
+    setWatchedDeparture({ ...event, date: context.date });
+    setFollow(Boolean(engine.current?.watchDeparture(event)));
+    setFollowName(event.lineName); setView(-1);
+    trackFeature('departure_watch', { line_id: event.lineId });
+    notify(`${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
+  }
+  function returnFromDeparture() {
+    engine.current?.setFollow(false); setFollow(false); clock.sync(); refresh(); setWatchedDeparture(null); trackFeature('departure_watch_return');
+  }
   function followTrain() {
     if(walking){rememberWalk();engine.current?.setWalk(false);setWalking(false);}
     if (follow) { engine.current?.setFollow(false); setFollow(false); return; }
-    if (engine.current?.setFollow(true)) { setFollow(true); setView(-1); setRotate(false); setRoofHidden(true); }
+    if (engine.current?.setFollow(true)) { setFollow(true); setFollowName('N700系'); setView(-1); setRotate(false); setRoofHidden(true); }
     else notify('現在、N700系は画面内にいません。時刻表から次の発車へ移動できます。');
   }
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'next-departure') { watchDeparture(); return; }
     if (action === 'scene-draw') {drawScene();return;}
     if (action === 'station-tour') {startTour();return;}
     if (action === 'free-camera') {if(walking)selectView(0);selectCameraMode(true);setDialog(null);return;}
@@ -375,6 +395,10 @@ export default function App() {
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
     {!walking && !tour && <button className="scene-draw glass" disabled={!ready} onClick={drawScene} title="6つの視点と光から一景へ。時計はそのまま。">景色くじ ◇</button>}
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
+    {!walking && !tour && <section className="departure-watch glass" aria-label="発車を見に行く">
+      <div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この運行日の残りの発車なし'}</button></div>
+      {watchedToday && <button className="departure-return" onClick={returnFromDeparture}>現在時刻へ</button>}
+    </section>}
     {tour && <section className="tour-panel glass" aria-label="東京駅ツアー" aria-live="polite"><div><small>TOKYO STATION TOUR · {tour.step+1} / {TOUR_STOPS.length}</small><strong>{TOUR_STOPS[tour.step].title}</strong><p>{TOUR_STOPS[tour.step].caption}</p></div><button onClick={()=>engine.current?.stopTour('button')}>ここで止める</button></section>}
     {!walking && <button className="camera-mode glass" disabled={!ready} aria-label={freeMode?'カメラ操作を周回に切り替え':'カメラ操作を自由移動に切り替え'} onClick={()=>selectCameraMode(!freeMode)}>{freeMode?'自由移動':'周回操作'} ⇄</button>}
     {!walking && freeMode && !follow && <FreeControls controller={()=>engine.current?.freeCamera} />}
@@ -386,7 +410,7 @@ export default function App() {
     {walking && walkMapOpen && <WalkMap pose={frame.walkPosition} />}
     {walking && <WalkControls mapOpen={walkMapOpen} onMap={() => showWalkMap(!walkMapOpen)} period={daylightCycle ? null : period} onLight={selectWalkLight} autoWalking={autoWalking} onAutoWalk={() => {const walk=engine.current?.walkCamera;walk?.setAutoMoving(!walk.autoMoving);}} controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onShare={openSceneLink} onBookmark={() => openBookmarks(true)} onExit={() => selectView(0)} />}
     <aside className="time-stack">
-      <ClockPanel now={now} onChange={refresh} data={data} context={context} />
+      <ClockPanel now={now} onChange={() => { setWatchedDeparture(null); refresh(); }} data={data} context={context} />
       <section className="departure-panel glass" aria-label="次の発車">
         <header><span>次の発車 <small>東京駅</small></span><button disabled={!data} onClick={() => setDialog('timetable')}>時刻表 ↗</button></header>
         {downloadProgress ? <p className="empty-state" role="status">{downloadProgress}</p> : dataError ? <p className="data-warning" role="alert">{dataError}<button onClick={() => setAttempt(value => value + 1)}>再試行</button></p> : !data ? <p className="empty-state">時刻表を読み込み中…</p> : !context.supported ? <p className="data-warning">{data.month.replace('-', '年')}月の時刻表を収録しています。<br />この日付の列車は表示しません。</p> : upcoming.length ? <ol>{upcoming.map(event => <li key={event.id}><button onClick={() => seek(event)} title="この発車の30秒前へ"><time>{event.time}</time><i style={{ background: event.color }} /><span><strong>{event.lineName}</strong><small>{event.type} · {event.destination}</small></span><span className="jump-arrow">↗</span></button></li>)}</ol> : <p className="empty-state">本日の収録列車は発車を終えました。<br /><button onClick={() => { clock.seek(context.midnight + 86400000 + 5 * 3600000); refresh(); }}>翌朝5時へ ↗</button></p>}
@@ -394,7 +418,7 @@ export default function App() {
       </section>
     </aside>
     <div className="scene-labels" aria-hidden={!labels}>{frame.labels.filter(label => label.visible).map(label => <span key={label.name} style={{ left: label.x, top: label.y }}>{label.name}</span>)}</div>
-    <nav className={`viewpoints glass ${viewsOpen ? 'expanded' : ''}`} aria-label="視点を選択"><button className="views-disclosure" aria-expanded={viewsOpen} onClick={() => setViewsOpen(value => !value)}>視点・車両 <span>{viewsOpen ? '−' : '+'}</span></button><div className="view-options"><div className="panel-title">VIEWPOINT</div><button className="spots-menu" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>散策の見どころ ↗</button>{VIEWPOINTS.map((item, index) => <button key={item.name} aria-pressed={view === index} onClick={() => selectView(index)}><span className="view-num">0{index + 1}</span>{item.name}</button>)}<button className="follow-train" disabled={!ready} aria-pressed={follow} onClick={followTrain}>{follow ? 'N700系の追従を解除' : '新幹線を追う'}</button><button className="roof-toggle" aria-pressed={roofHidden} onClick={() => setRoofHidden(value => !value)}>ホーム屋根を隠す</button><button className="inspect-train" onClick={() => setDialog('train')}>新幹線の車両詳細 ↗</button></div></nav>
+    <nav className={`viewpoints glass ${viewsOpen ? 'expanded' : ''}`} aria-label="視点を選択"><button className="views-disclosure" aria-expanded={viewsOpen} onClick={() => setViewsOpen(value => !value)}>視点・車両 <span>{viewsOpen ? '−' : '+'}</span></button><div className="view-options"><div className="panel-title">VIEWPOINT</div><button className="spots-menu" disabled={!ready} aria-haspopup="dialog" onClick={openSpots}>散策の見どころ ↗</button>{VIEWPOINTS.map((item, index) => <button key={item.name} aria-pressed={view === index} onClick={() => selectView(index)}><span className="view-num">0{index + 1}</span>{item.name}</button>)}<button className="follow-train" disabled={!ready} aria-pressed={follow} onClick={followTrain}>{follow ? `${followName}の追従を解除` : '新幹線を追う'}</button><button className="roof-toggle" aria-pressed={roofHidden} onClick={() => setRoofHidden(value => !value)}>ホーム屋根を隠す</button><button className="inspect-train" onClick={() => setDialog('train')}>新幹線の車両詳細 ↗</button></div></nav>
     <div className="playback glass" role="toolbar" aria-label="描画コントロール"><button className="icon play" onClick={() => { clock.setPaused(!clock.paused); refresh(); }} aria-label={clock.paused ? '列車と時計を再開' : '列車と時計を一時停止'}>{clock.paused ? '▶' : 'Ⅱ'}</button><button className="speed" onClick={() => { clock.setSpeed(SPEEDS[(SPEEDS.indexOf(clock.speed) + 1) % SPEEDS.length]); refresh(); }} aria-label={`時計速度 ${clock.speed}倍。クリックで変更`}>{clock.speed}<span>×</span></button><i /><button disabled={walking || freeMode} aria-pressed={rotate} onClick={() => setRotate(value => !value)}>自動旋回</button><i /><button aria-pressed={labels} onClick={() => setLabels(value => !value)}>ラベル</button></div>
     <aside className="orientation"><button className="compass" title="東京駅全景に戻す（0）" aria-label="東京駅全景に戻す" onClick={() => selectView(0)}><span className="north">N</span><svg viewBox="0 0 80 80" style={{ transform: `rotate(${-frame.heading}deg)` }}><circle cx="40" cy="40" r="32" /><path className="needle" d="M40 17L46 45L40 41L34 45Z" /><path className="needle-back" d="M40 63L46 45L40 41L34 45Z" /></svg></button><p>{freeMode&&!follow?'ドラッグで見回す / スクロールで前後へ':'ドラッグで周回 / スクロールで拡大'}</p><div className="footnote"><span>{freeMode&&!follow?'W/S 前後 · A/D 左右 · Q/E 上下 · Shift 加速':'右ドラッグで移動'}</span><button onClick={() => setDialog('about')} aria-label="このジオラマについて">ⓘ</button></div></aside>
     <a className="map-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>

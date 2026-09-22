@@ -17,12 +17,12 @@ export class ScheduledDiorama extends DioramaBase {
     this.events = events;
     this.lanes = this.world.trains.map((_, lane) => events.filter(event => event.lane === lane));
   }
-  setFollow(enabled) {
+  setFollow(enabled, lane = null) {
     if(enabled)this.stopTour('follow');
     this.followTrain = null;
     this.followCamera.stop();
     if (!enabled) return false;
-    const train = this.world.trains.find(candidate => candidate.type === 'n700');
+    const train = lane === null ? this.world.trains.find(candidate => candidate.type === 'n700') : this.world.trains[lane];
     if (!train || !train.cars[0].visible) return false;
     this.freeCamera?.stop();this.controls.enabled=true;
     this.followTrain = train;
@@ -31,13 +31,11 @@ export class ScheduledDiorama extends DioramaBase {
     this.followCamera.start(train.cars[0].position, performance.now(), matchMedia('(prefers-reduced-motion: reduce)').matches);
     return true;
   }
-  animate(frame) {
-    if (this.disposed) return;
-    const delta = Math.min((frame - this.lastTime) / 1000, 0.1);
-    this.lastTime = frame;
-    if (this.daylight.update(delta)) this.applyDaylight();
-    const timestamp = this.clock.now();
-    this.time = timestamp / 1000;
+  watchDeparture(event) {
+    this.updateTrains(this.clock.now());
+    return this.setFollow(true, event.lane);
+  }
+  updateTrains(timestamp) {
     this.activeTrains = [];
     this.world.trains.forEach((train, lane) => {
       const state = trainState(this.lanes[lane], timestamp, this.envelopes[lane]);
@@ -61,6 +59,15 @@ export class ScheduledDiorama extends DioramaBase {
         }
       });
     });
+  }
+  animate(frame) {
+    if (this.disposed) return;
+    const delta = Math.min((frame - this.lastTime) / 1000, 0.1);
+    this.lastTime = frame;
+    if (this.daylight.update(delta)) this.applyDaylight();
+    const timestamp = this.clock.now();
+    this.time = timestamp / 1000;
+    this.updateTrains(timestamp);
     for (const car of this.world.cars) {
       const { route, direction } = car;
       const distance = ((this.time * 8 + car.offset) % route.total + route.total) % route.total;
