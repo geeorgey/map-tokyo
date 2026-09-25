@@ -24,3 +24,21 @@ test('late night respects the previous service day and does not invent next-mont
     else assert.equal(next, null);
   }
 });
+
+test('line selection skips other lines without inventing unavailable departures', () => {
+  const now = ts('2026-09-25T12:00:01');
+  const events = eventsForDay(data, now);
+  for (const lineId of ['chuo','keihin','yamanote','tokaido','hokuriku','joetsu','shinkansen']) {
+    const expected = events.find(event => event.at > now && event.lineId === lineId);
+    const first = nextDeparture(events, now, undefined, lineId);
+    assert.deepEqual(first, expected);
+    const second = nextDeparture(events, first.at - 5000, first.at, lineId);
+    assert.equal(second.lineId, lineId);
+    assert.ok(second.at > first.at);
+    const final = events.filter(event => event.lineId === lineId).at(-1);
+    assert.equal(nextDeparture(events, final.at, undefined, lineId), null);
+  }
+  assert.equal(nextDeparture(events, now, undefined, 'not-a-line'), null);
+  assert.deepEqual(nextDeparture(events, now, undefined, 'all'), nextDeparture(events, now));
+  assert.equal(nextDeparture([], now, undefined, 'shinkansen'), null);
+});

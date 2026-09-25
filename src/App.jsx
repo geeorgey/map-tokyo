@@ -105,6 +105,7 @@ export default function App() {
   const [followName, setFollowName] = useState('N700系');
   const [tour, setTour] = useState(null);
   const [watchedDeparture, setWatchedDeparture] = useState(null);
+  const [departureLine, setDepartureLine] = useState('all');
   const [freeMode, setFreeMode] = useState(true);
   const [walking, setWalking] = useState(false);
   const [walkMapOpen, setWalkMapOpen] = useState(false);
@@ -135,7 +136,8 @@ export default function App() {
   const events = useMemo(() => data ? eventsForDay(data, now) : [], [data, context.date]);
   const upcoming = events.filter(event => event.at > now).slice(0, 3);
   const watchedToday = watchedDeparture?.date === context.date ? watchedDeparture : null;
-  const departureToWatch = nextDeparture(events, now, watchedToday?.at);
+  const watchedCursor = watchedToday && (departureLine === 'all' || departureLine === watchedToday.lineId) ? watchedToday.at : undefined;
+  const departureToWatch = nextDeparture(events, now, watchedCursor, departureLine);
   const refresh = () => setNow(clock.now());
 
   function notify(message) { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 4500); }
@@ -348,14 +350,14 @@ export default function App() {
   function selectView(index) { rememberWalk();engine.current?.setView(index); setWalking(false); setView(index); setRotate(false); setFollow(false); if (index === 4) setRoofHidden(true); }
   function seek(event) { clock.seek(event.at - 30000); clock.setPaused(false); refresh(); setRoofHidden(true); }
   function watchDeparture() {
-    const event = nextDeparture(events, clock.now(), watchedToday?.at);
+    const event = nextDeparture(events, clock.now(), watchedCursor, departureLine);
     if (!event) { notify('この運行日の残りの発車はありません。時刻表で日付を選べます。'); return; }
     selectView(2); setRoofHidden(true); setViewsOpen(false); setDialog(null); setMenusHidden(true);
     clock.seek(event.at - 5000); clock.setSpeed(1); clock.setPaused(false); refresh();
     setWatchedDeparture({ ...event, date: context.date });
     setFollow(Boolean(engine.current?.watchDeparture(event)));
     setFollowName(event.lineName); setView(-1);
-    trackFeature('departure_watch', { line_id: event.lineId });
+    trackFeature('departure_watch', { line_id: event.lineId, selected_line: departureLine });
     notify(`${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
   }
   function returnFromDeparture() {
@@ -370,6 +372,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-line') { if(walking)selectView(0); engine.current?.stopTour('manual'); setDialog(null); setMenusHidden(true); requestAnimationFrame(()=>document.getElementById('departure-line')?.focus()); return; }
     if (action === 'next-departure') { watchDeparture(); return; }
     if (action === 'scene-draw') {drawScene();return;}
     if (action === 'station-tour') {startTour();return;}
@@ -396,8 +399,9 @@ export default function App() {
     {!walking && !tour && <button className="scene-draw glass" disabled={!ready} onClick={drawScene} title="6つの視点と光から一景へ。時計はそのまま。">景色くじ ◇</button>}
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
     {!walking && !tour && <section className="departure-watch glass" aria-label="発車を見に行く">
-      <div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この運行日の残りの発車なし'}</button></div>
-      {watchedToday && <button className="departure-return" onClick={returnFromDeparture}>現在時刻へ</button>}
+      <label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label>
+      <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button></div>
+      {watchedToday && <button className="departure-return" onClick={returnFromDeparture}>現在時刻へ</button>}</div>
     </section>}
     {tour && <section className="tour-panel glass" aria-label="東京駅ツアー" aria-live="polite"><div><small>TOKYO STATION TOUR · {tour.step+1} / {TOUR_STOPS.length}</small><strong>{TOUR_STOPS[tour.step].title}</strong><p>{TOUR_STOPS[tour.step].caption}</p></div><button onClick={()=>engine.current?.stopTour('button')}>ここで止める</button></section>}
     {!walking && <button className="camera-mode glass" disabled={!ready} aria-label={freeMode?'カメラ操作を周回に切り替え':'カメラ操作を自由移動に切り替え'} onClick={()=>selectCameraMode(!freeMode)}>{freeMode?'自由移動':'周回操作'} ⇄</button>}
