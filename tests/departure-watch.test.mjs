@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { eventsForDay } from '../src/schedule.mjs';
-import { nextDeparture } from '../src/departure-watch.mjs';
+import { nextDeparture, replayDeparture } from '../src/departure-watch.mjs';
 
 const data = JSON.parse(await readFile(new URL('../public/data/timetable.json', import.meta.url)));
 const ts = value => Date.parse(value + '+09:00');
@@ -41,4 +41,18 @@ test('line selection skips other lines without inventing unavailable departures'
   assert.equal(nextDeparture(events, now, undefined, 'not-a-line'), null);
   assert.deepEqual(nextDeparture(events, now, undefined, 'all'), nextDeparture(events, now));
   assert.equal(nextDeparture([], now, undefined, 'shinkansen'), null);
+});
+
+test('replay resolves the exact watched line and time only in the current dataset', () => {
+  const now = ts('2026-09-26T12:00:00');
+  const events = eventsForDay(data, now);
+  const watched = nextDeparture(events, now, undefined, 'shinkansen');
+  assert.equal(replayDeparture(events, watched), watched);
+  const simultaneous = events.find(event => event.at === watched.at && event.lineId !== watched.lineId);
+  if (simultaneous) assert.notEqual(replayDeparture(events, watched).lineId, simultaneous.lineId);
+  assert.equal(replayDeparture(eventsForDay(data, ts('2026-09-27T12:00:00')), watched), null);
+  assert.equal(replayDeparture([], watched), null);
+  assert.equal(replayDeparture(events, null), null);
+  assert.equal(replayDeparture(events, {...watched, lineId:'missing'}), null);
+  assert.ok(nextDeparture(events, watched.at-5000, watched.at, watched.lineId).at > watched.at);
 });

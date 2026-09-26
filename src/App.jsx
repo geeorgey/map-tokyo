@@ -3,7 +3,7 @@ import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mj
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import { TOUR_STOPS } from './engine/station-tour.js';
 import { createSceneDraw } from './scene-draw.mjs';
-import { nextDeparture } from './departure-watch.mjs';
+import { nextDeparture, replayDeparture } from './departure-watch.mjs';
 import FreeControls from './FreeControls.jsx';
 import WalkControls from './WalkControls.jsx';
 import WalkMap from './WalkMap.jsx';
@@ -50,7 +50,7 @@ function ClockPanel({ now, onChange, data, context }) {
     const values = new FormData(event.currentTarget);
     const value = parseJapanDateTime(values.get('date'), values.get('time'));
     if (value === null) { setError('有効な日付と時刻を入力してください。'); return; }
-    clock.seek(value); setEditing(false); setError(''); onChange();
+    clock.seek(value); setEditing(false); setError(''); onChange('seek');
   }
   return <section className="clock-panel glass" aria-label="日本時間とシミュレーション時計">
     <div className="clock-meta"><span>東京 / JST</span><span className={`clock-mode ${clock.live ? 'is-live' : ''}`}>{clock.paused ? '一時停止' : clock.live ? '実時間' : 'シミュレーション'}</span></div>
@@ -59,7 +59,7 @@ function ClockPanel({ now, onChange, data, context }) {
     <div className="clock-actions">
       <button className="clock-pause" onClick={() => { clock.setPaused(!clock.paused); onChange(); }} aria-label={clock.paused ? '時計を再開' : '時計を一時停止'} title="Spaceキーでも停止・再開">{clock.paused ? '▶' : 'Ⅱ'}</button>
       <label className="speed-picker">時計速度<select aria-label="時計の速度" value={clock.speed} onChange={event => { clock.setSpeed(Number(event.target.value)); onChange(); }}>{SPEEDS.map(speed => <option key={speed} value={speed}>{speed}×</option>)}</select></label>
-      <button className="sync-clock" onClick={() => { clock.sync(); setEditing(false); onChange(); }} aria-pressed={clock.live}>現在時刻に戻る</button>
+      <button className="sync-clock" onClick={() => { clock.sync(); setEditing(false); onChange('sync'); }} aria-pressed={clock.live}>現在時刻に戻る</button>
     </div>
     <button className="edit-time" onClick={edit} aria-expanded={editing} aria-controls="date-editor">日時を指定 <span>{editing ? '−' : '+'}</span></button>
     {editing && <form id="date-editor" className="date-editor" onSubmit={apply}>
@@ -138,6 +138,7 @@ export default function App() {
   const watchedToday = watchedDeparture?.date === context.date ? watchedDeparture : null;
   const watchedCursor = watchedToday && (departureLine === 'all' || departureLine === watchedToday.lineId) ? watchedToday.at : undefined;
   const departureToWatch = nextDeparture(events, now, watchedCursor, departureLine);
+  const departureToReplay = replayDeparture(events, watchedToday);
   const refresh = () => setNow(clock.now());
 
   function notify(message) { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 4500); }
@@ -352,13 +353,21 @@ export default function App() {
   function watchDeparture() {
     const event = nextDeparture(events, clock.now(), watchedCursor, departureLine);
     if (!event) { notify('この運行日の残りの発車はありません。時刻表で日付を選べます。'); return; }
+    showDeparture(event);
+  }
+  function replayWatchedDeparture() {
+    const event = replayDeparture(events, watchedToday);
+    if (!event) return;
+    showDeparture(event, true);
+  }
+  function showDeparture(event, replay = false) {
     selectView(2); setRoofHidden(true); setViewsOpen(false); setDialog(null); setMenusHidden(true);
     clock.seek(event.at - 5000); clock.setSpeed(1); clock.setPaused(false); refresh();
     setWatchedDeparture({ ...event, date: context.date });
     setFollow(Boolean(engine.current?.watchDeparture(event)));
     setFollowName(event.lineName); setView(-1);
-    trackFeature('departure_watch', { line_id: event.lineId, selected_line: departureLine });
-    notify(`${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
+    trackFeature(replay ? 'departure_replay' : 'departure_watch', { line_id: event.lineId, selected_line: departureLine });
+    notify(`${replay ? 'もう一度：' : ''}${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
   }
   function returnFromDeparture() {
     engine.current?.setFollow(false); setFollow(false); clock.sync(); refresh(); setWatchedDeparture(null); trackFeature('departure_watch_return');
@@ -372,6 +381,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-replay') { if(departureToReplay)replayWatchedDeparture();else watchDeparture(); return; }
     if (action === 'departure-line') { if(walking)selectView(0); engine.current?.stopTour('manual'); setDialog(null); setMenusHidden(true); requestAnimationFrame(()=>document.getElementById('departure-line')?.focus()); return; }
     if (action === 'next-departure') { watchDeparture(); return; }
     if (action === 'scene-draw') {drawScene();return;}
@@ -400,7 +410,7 @@ export default function App() {
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
     {!walking && !tour && <section className="departure-watch glass" aria-label="発車を見に行く">
       <label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label>
-      <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button></div>
+      <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
       {watchedToday && <button className="departure-return" onClick={returnFromDeparture}>現在時刻へ</button>}</div>
     </section>}
     {tour && <section className="tour-panel glass" aria-label="東京駅ツアー" aria-live="polite"><div><small>TOKYO STATION TOUR · {tour.step+1} / {TOUR_STOPS.length}</small><strong>{TOUR_STOPS[tour.step].title}</strong><p>{TOUR_STOPS[tour.step].caption}</p></div><button onClick={()=>engine.current?.stopTour('button')}>ここで止める</button></section>}
@@ -414,7 +424,7 @@ export default function App() {
     {walking && walkMapOpen && <WalkMap pose={frame.walkPosition} />}
     {walking && <WalkControls mapOpen={walkMapOpen} onMap={() => showWalkMap(!walkMapOpen)} period={daylightCycle ? null : period} onLight={selectWalkLight} autoWalking={autoWalking} onAutoWalk={() => {const walk=engine.current?.walkCamera;walk?.setAutoMoving(!walk.autoMoving);}} controller={() => engine.current?.walkCamera} onHome={walkHome} onSpots={openSpots} onShare={openSceneLink} onBookmark={() => openBookmarks(true)} onExit={() => selectView(0)} />}
     <aside className="time-stack">
-      <ClockPanel now={now} onChange={() => { setWatchedDeparture(null); refresh(); }} data={data} context={context} />
+      <ClockPanel now={now} onChange={reason => { if(reason === 'seek' || reason === 'sync')setWatchedDeparture(null); refresh(); }} data={data} context={context} />
       <section className="departure-panel glass" aria-label="次の発車">
         <header><span>次の発車 <small>東京駅</small></span><button disabled={!data} onClick={() => setDialog('timetable')}>時刻表 ↗</button></header>
         {downloadProgress ? <p className="empty-state" role="status">{downloadProgress}</p> : dataError ? <p className="data-warning" role="alert">{dataError}<button onClick={() => setAttempt(value => value + 1)}>再試行</button></p> : !data ? <p className="empty-state">時刻表を読み込み中…</p> : !context.supported ? <p className="data-warning">{data.month.replace('-', '年')}月の時刻表を収録しています。<br />この日付の列車は表示しません。</p> : upcoming.length ? <ol>{upcoming.map(event => <li key={event.id}><button onClick={() => seek(event)} title="この発車の30秒前へ"><time>{event.time}</time><i style={{ background: event.color }} /><span><strong>{event.lineName}</strong><small>{event.type} · {event.destination}</small></span><span className="jump-arrow">↗</span></button></li>)}</ol> : <p className="empty-state">本日の収録列車は発車を終えました。<br /><button onClick={() => { clock.seek(context.midnight + 86400000 + 5 * 3600000); refresh(); }}>翌朝5時へ ↗</button></p>}
