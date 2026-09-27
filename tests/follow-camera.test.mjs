@@ -20,3 +20,16 @@ test('pause and stop leave the camera stationary; user input can interrupt easin
  const before=camera.position.clone(),target=controls.target.clone();follow.update(p,500);near(camera.position,before);near(controls.target,target);
  follow.stop();follow.update(new Vector3(40,4,200),1000);near(camera.position,before);near(controls.target,target);
 });
+
+test('a new viewing angle keeps the same anchor and tracks movement through the transition',()=>{
+ const {camera,controls,follow}=setup(),anchor=new Vector3(50,4,60),offset=new Vector3(-42,18,-24);
+ follow.start(anchor,0,true);
+ follow.start(anchor,100,false,offset);
+ const moved=anchor.clone().add(new Vector3(2,0,10));follow.update(moved,1200);
+ near(controls.target,moved.clone().add(new Vector3(0,1.8,0)));
+ near(camera.position.clone().sub(controls.target),offset);
+ const next=moved.clone().add(new Vector3(1,0,1));follow.update(next,1216);
+ near(camera.position.clone().sub(controls.target),offset);
+ near(offset,new Vector3(-42,18,-24));
+ follow.start(next,1300,true);near(camera.position.clone().sub(controls.target),new Vector3(-8,80,-24));
+});

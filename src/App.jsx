@@ -106,6 +106,7 @@ export default function App() {
   const [tour, setTour] = useState(null);
   const [watchedDeparture, setWatchedDeparture] = useState(null);
   const [departureLine, setDepartureLine] = useState('all');
+  const [departureAngle, setDepartureAngle] = useState('above');
   const [freeMode, setFreeMode] = useState(true);
   const [walking, setWalking] = useState(false);
   const [walkMapOpen, setWalkMapOpen] = useState(false);
@@ -365,9 +366,15 @@ export default function App() {
     clock.seek(event.at - 5000); clock.setSpeed(1); clock.setPaused(false); refresh();
     setWatchedDeparture({ ...event, date: context.date });
     setFollow(Boolean(engine.current?.watchDeparture(event)));
+    engine.current?.setDepartureAngle(departureAngle);
     setFollowName(event.lineName); setView(-1);
     trackFeature(replay ? 'departure_replay' : 'departure_watch', { line_id: event.lineId, selected_line: departureLine });
     notify(`${replay ? 'もう一度：' : ''}${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
+  }
+  function selectDepartureAngle(angle) {
+    if (!engine.current?.setDepartureAngle(angle)) { notify('追従中の列車が見えるときに切り替えられます。'); return; }
+    setDepartureAngle(angle);
+    trackFeature('departure_angle_select', { angle, line_id: watchedToday?.lineId });
   }
   function returnFromDeparture() {
     engine.current?.setFollow(false); setFollow(false); clock.sync(); refresh(); setWatchedDeparture(null); trackFeature('departure_watch_return');
@@ -381,6 +388,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-angle') { watchDeparture(); return; }
     if (action === 'departure-replay') { if(departureToReplay)replayWatchedDeparture();else watchDeparture(); return; }
     if (action === 'departure-line') { if(walking)selectView(0); engine.current?.stopTour('manual'); setDialog(null); setMenusHidden(true); requestAnimationFrame(()=>document.getElementById('departure-line')?.focus()); return; }
     if (action === 'next-departure') { watchDeparture(); return; }
@@ -408,9 +416,10 @@ export default function App() {
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
     {!walking && !tour && <button className="scene-draw glass" disabled={!ready} onClick={drawScene} title="6つの視点と光から一景へ。時計はそのまま。">景色くじ ◇</button>}
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
-    {!walking && !tour && <section className="departure-watch glass" aria-label="発車を見に行く">
+    {!walking && !tour && <section className={`departure-watch glass ${watchedToday && follow ? 'is-following' : ''}`} aria-label="発車を見に行く">
       <label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label>
       <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
+      {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{[['above','上から'],['side','横から']].map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
       {watchedToday && <button className="departure-return" onClick={returnFromDeparture}>現在時刻へ</button>}</div>
     </section>}
     {tour && <section className="tour-panel glass" aria-label="東京駅ツアー" aria-live="polite"><div><small>TOKYO STATION TOUR · {tour.step+1} / {TOUR_STOPS.length}</small><strong>{TOUR_STOPS[tour.step].title}</strong><p>{TOUR_STOPS[tour.step].caption}</p></div><button onClick={()=>engine.current?.stopTour('button')}>ここで止める</button></section>}

@@ -3,10 +3,10 @@ import {Vector3} from 'three';
 // Translate camera and orbit target together so user orbit/zoom/pan survives tracking.
 export class FollowCamera {
   constructor(camera,controls){this.camera=camera;this.controls=controls;this.active=false;this.last=new Vector3();this.delta=new Vector3();}
-  start(anchor,now=0,immediate=false){
+  start(anchor,now=0,immediate=false,offset=new Vector3(-8,80,-24)){
     this.active=true;this.last.copy(anchor);
     const target=anchor.clone().add(new Vector3(0,1.8,0));
-    const position=target.clone().add(new Vector3(-8,80,-24));
+    const position=target.clone().add(offset);
     this.transition=immediate?null:{start:now,from:this.camera.position.clone(),targetFrom:this.controls.target.clone(),position,target};
     if(immediate){this.camera.position.copy(position);this.controls.target.copy(target);}
   }
