@@ -108,6 +108,9 @@ export default function App() {
   const [watchedDeparture, setWatchedDeparture] = useState(null);
   const [departureLine, setDepartureLine] = useState('all');
   const [departureAngle, setDepartureAngle] = useState('above');
+  const [cinema, setCinema] = useState(false);
+  const cinemaStarted = useRef(null);
+  const cinemaEntry = useRef(null);
   const [incomingDeparture, setIncomingDeparture] = useState(null);
   const [departureLinkError, setDepartureLinkError] = useState('');
   const [departureLinkLoading, setDepartureLinkLoading] = useState(false);
@@ -388,6 +391,28 @@ export default function App() {
     trackFeature(replay ? 'departure_replay' : 'departure_watch', { line_id: event.lineId, selected_line: selectedLine });
     notify(`${replay ? 'もう一度：' : ''}${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
   }
+  function startCinema() {
+    if (!watchedToday || !follow) return;
+    cinemaStarted.current = performance.now(); setCinema(true);
+    engine.current?.renderer.domElement.focus({ preventScroll: true });
+    trackFeature('departure_cinema_start', { line_id: watchedToday.lineId });
+  }
+  function stopCinema(reason = 'button') {
+    if (cinemaStarted.current === null) return;
+    const seconds = Math.round((performance.now() - cinemaStarted.current) / 1000);
+    cinemaStarted.current = null; setCinema(false);
+    trackFeature('departure_cinema_end', { reason, seconds });
+    requestAnimationFrame(() => cinemaEntry.current?.focus({ preventScroll: true }));
+  }
+  useEffect(() => {
+    if (!cinema) return;
+    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); stopCinema('escape'); } };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [cinema]);
+  useEffect(() => {
+    if (cinema && (dialog || capture || !follow || !watchedToday)) stopCinema('context');
+  }, [cinema, dialog, capture, follow, Boolean(watchedToday)]);
   function openDepartureLink() {
     if (!departureToReplay) return;
     const url = makeDepartureLink(window.location.origin, { ...departureToReplay, angle: departureAngle, light: engine.current.daylight.phase });
@@ -437,6 +462,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-cinema') { if(watchedToday && follow){setDialog(null);startCinema();}else {watchDeparture();notify('発車を見たら「景色だけで鑑賞」を押してください。');} return; }
     if (action === 'departure-link') { if(departureToReplay)openDepartureLink();else {watchDeparture();notify('発車を見たら「この発車のリンク」で保存・共有できます。');} return; }
     if (action === 'departure-angle') { watchDeparture(); return; }
     if (action === 'departure-replay') { if(departureToReplay)replayWatchedDeparture();else watchDeparture(); return; }
@@ -460,9 +486,13 @@ export default function App() {
   }
   async function saveScene() { try { setCapture(await engine.current.capture()); } catch { notify('画像を保存できませんでした。もう一度お試しください。'); } }
 
-  return <main onPointerDownCapture={event=>{if(!event.target.closest('.tour-panel'))engine.current?.stopTour('manual');}} className={`app ${frame.period || period} ${walking ? 'is-walking' : ''} ${menusHidden ? 'menus-hidden' : ''}`}>
+  return <main onPointerDownCapture={event=>{if(!event.target.closest('.tour-panel'))engine.current?.stopTour('manual');}} className={`app ${frame.period || period} ${walking ? 'is-walking' : ''} ${menusHidden ? 'menus-hidden' : ''} ${cinema ? 'is-cinema' : ''}`}>
     <div ref={viewport} className="viewport" />
     <div className="top-shade" />
+    {cinema && <div className="cinema-controls glass" role="toolbar" aria-label="景色だけで鑑賞">
+      <button className="cinema-pause" aria-label={clock.paused ? '鑑賞中の列車を再開' : '鑑賞中の列車を一時停止'} onClick={() => { clock.setPaused(!clock.paused); refresh(); }}>{clock.paused ? '▶' : 'Ⅱ'}</button>
+      <button onClick={() => stopCinema()} title="Escapeキーでも戻れます">操作を戻す</button>
+    </div>}
     <button className="menu-visibility glass" aria-expanded={!menusHidden} onClick={() => { engine.current?.walkCamera.clear('menu'); if(menusHidden && walkMapOpen)showWalkMap(false); setMenusHidden(value => !value); }}>{menusHidden ? 'メニューを表示' : 'メニューを隠す'}</button>
     {!walking && !tour && <button className="scene-draw glass" disabled={!ready} onClick={drawScene} title="6つの視点と光から一景へ。時計はそのまま。">景色くじ ◇</button>}
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
@@ -471,6 +501,7 @@ export default function App() {
       <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
       {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{[['above','上から'],['side','横から']].map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
       {departureToReplay && <button className="departure-share" onClick={openDepartureLink}>この発車のリンク ↗</button>}
+      {watchedToday && follow && <button className="departure-cinema" ref={cinemaEntry} onClick={startCinema}>景色だけで鑑賞</button>}
       {watchedToday && <button className="departure-return" onClick={returnFromDeparture}>現在時刻へ</button>}</div>
     </section>}
     {tour && <section className="tour-panel glass" aria-label="東京駅ツアー" aria-live="polite"><div><small>TOKYO STATION TOUR · {tour.step+1} / {TOUR_STOPS.length}</small><strong>{TOUR_STOPS[tour.step].title}</strong><p>{TOUR_STOPS[tour.step].caption}</p></div><button onClick={()=>engine.current?.stopTour('button')}>ここで止める</button></section>}
