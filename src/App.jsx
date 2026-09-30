@@ -4,6 +4,7 @@ import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
 import { TOUR_STOPS } from './engine/station-tour.js';
 import { createSceneDraw } from './scene-draw.mjs';
 import { parseDepartureLink, makeDepartureLink, resolveDepartureLink } from './departure-link.mjs';
+import { readDepartureBookmarks, saveDepartureBookmark, deleteDepartureBookmark } from './departure-bookmarks.mjs';
 import { nextDeparture, replayDeparture } from './departure-watch.mjs';
 import FreeControls from './FreeControls.jsx';
 import WalkControls from './WalkControls.jsx';
@@ -111,6 +112,10 @@ export default function App() {
   const [cinema, setCinema] = useState(false);
   const cinemaStarted = useRef(null);
   const cinemaEntry = useRef(null);
+  const [departureBookmarks, setDepartureBookmarks] = useState([]);
+  const [departureBookmarkError, setDepartureBookmarkError] = useState('');
+  const [departureBookmarkStatus, setDepartureBookmarkStatus] = useState('');
+  const [departureArrivalSource, setDepartureArrivalSource] = useState('link');
   const [incomingDeparture, setIncomingDeparture] = useState(null);
   const [departureLinkError, setDepartureLinkError] = useState('');
   const [departureLinkLoading, setDepartureLinkLoading] = useState(false);
@@ -211,7 +216,7 @@ export default function App() {
       if (!new URLSearchParams(window.location.hash.slice(1)).has('departure')) return;
       departureRequest.current?.abort();
       const link = parseDepartureLink(window.location.hash);
-      setIncomingDeparture(link); setDepartureLinkLoading(false);
+      setIncomingDeparture(link); setDepartureArrivalSource('link'); setDepartureLinkLoading(false);
       setDepartureLinkError(link ? '' : 'この発車のリンクは使えません。発車を見に行くから選び直せます。');
       setDialog('departure-arrive');
     };
@@ -419,6 +424,34 @@ export default function App() {
     if (!url) return;
     setSceneLink(url); setLinkCopied(false); setDialog('departure-link'); trackFeature('departure_link_open');
   }
+  function openDepartureBookmarks() {
+    setDepartureBookmarkStatus(''); setDepartureBookmarkError('');
+    try { setDepartureBookmarks(readDepartureBookmarks(window.localStorage)); }
+    catch { setDepartureBookmarkError('発車のしおりを読み込めませんでした。ブラウザの保存設定を確認してください。'); }
+    setDialog('departure-bookmarks'); trackFeature('departure_bookmarks_open');
+  }
+  function saveWatchedDeparture() {
+    if (!departureToReplay) return;
+    const url = makeDepartureLink(window.location.origin, { ...departureToReplay, angle: departureAngle, light: engine.current.daylight.phase });
+    setDepartureBookmarkError(''); setDepartureBookmarkStatus('');
+    try {
+      setDepartureBookmarks(saveDepartureBookmark(window.localStorage, new URL(url).hash));
+      setDepartureBookmarkStatus('このブラウザに発車を保存しました。');
+      trackFeature('departure_bookmark_save', { line_id: departureToReplay.lineId });
+    } catch (error) { setDepartureBookmarkError(error.message.includes('保存済み') || error.message.includes('5件') ? error.message : '保存できませんでした。ブラウザの保存設定や空き容量を確認してください。'); }
+  }
+  function removeSavedDeparture(hash) {
+    setDepartureBookmarkError(''); setDepartureBookmarkStatus('');
+    try { setDepartureBookmarks(deleteDepartureBookmark(window.localStorage, hash)); setDepartureBookmarkStatus('選んだ発車のしおりを削除しました。'); }
+    catch { setDepartureBookmarkError('削除できませんでした。ブラウザの保存設定を確認してください。'); }
+  }
+  function openSavedDeparture(hash) {
+    const saved = parseDepartureLink(hash);
+    if (!saved) return;
+    departureRequest.current?.abort();
+    setIncomingDeparture(saved); setDepartureArrivalSource('bookmark'); setDepartureLinkLoading(false); setDepartureLinkError('');
+    setDialog('departure-arrive');
+  }
   function closeDepartureArrival() {
     departureRequest.current?.abort(); setDepartureLinkLoading(false); setDialog(null);
   }
@@ -440,7 +473,7 @@ export default function App() {
       setPeriod(Number.isInteger(incomingDeparture.light) ? ['day','evening','night'][incomingDeparture.light] : null); setDaylightCycle(false);
       current.setEvents(eventsForDay(timetable, incomingDeparture.at));
       showDeparture(event, false, incomingDeparture.angle, incomingDeparture.lineId);
-      trackFeature('departure_link_play', { line_id: event.lineId });
+      trackFeature(departureArrivalSource === 'bookmark' ? 'departure_bookmark_play' : 'departure_link_play', { line_id: event.lineId });
     } catch (error) {
       if (!request.signal.aborted) setDepartureLinkError(error.message || '時刻表を読み込めませんでした。');
     } finally { if (!request.signal.aborted) setDepartureLinkLoading(false); }
@@ -462,6 +495,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-bookmarks') { openDepartureBookmarks(); return; }
     if (action === 'departure-cinema') { if(watchedToday && follow){setDialog(null);startCinema();}else {watchDeparture();notify('発車を見たら「景色だけで鑑賞」を押してください。');} return; }
     if (action === 'departure-link') { if(departureToReplay)openDepartureLink();else {watchDeparture();notify('発車を見たら「この発車のリンク」で保存・共有できます。');} return; }
     if (action === 'departure-angle') { watchDeparture(); return; }
@@ -497,7 +531,7 @@ export default function App() {
     {!walking && !tour && <button className="scene-draw glass" disabled={!ready} onClick={drawScene} title="6つの視点と光から一景へ。時計はそのまま。">景色くじ ◇</button>}
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
     {!walking && !tour && <section className={`departure-watch glass ${watchedToday && follow ? 'is-following' : ''}`} aria-label="発車を見に行く">
-      <label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label>
+      <div className="departure-heading"><label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label><button className="departure-bookmarks-entry" onClick={openDepartureBookmarks}>発車のしおり</button></div>
       <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
       {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{[['above','上から'],['side','横から']].map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
       {departureToReplay && <button className="departure-share" onClick={openDepartureLink}>この発車のリンク ↗</button>}
@@ -545,8 +579,22 @@ export default function App() {
       {!bookmarks.length && <p className="data-note">まだしおりはありません。散策中の「しおり」から、好きな景色を保存できます。</p>}
       <p className="data-note">このブラウザだけに最大5件保存します。閲覧データを消すと、しおりも消えます。列車は開いたときの時計で動きます。</p>
     </Modal>}
-    {dialog === 'departure-arrive' && <Modal title="リンクの発車を、もう一度。" onClose={closeDepartureArrival}>
-      {incomingDeparture && <><p>{japanTime(incomingDeparture.at).date} · {japanTime(incomingDeparture.at).time} 発<br />{LINES.find(line=>line.id===incomingDeparture.lineId)?.name}</p><p>「再生する」で時計を発車5秒前へ。リンクの視点と光で、1倍速で追いかけます。</p></>}
+    {dialog === 'departure-bookmarks' && <Modal title="発車のしおり" onClose={() => setDialog(null)}>
+      <p>好きな発車を、このブラウザに5件まで。日時・路線・視点・光を保存します。</p>
+      {departureToReplay ? <button className="scene-link-copy" onClick={saveWatchedDeparture}>今の発車を保存</button> : <p className="data-note">「発車を見に行く」で列車を眺めたら、ここから保存できます。</p>}
+      {departureBookmarkError && <p role="alert" className="data-warning">{departureBookmarkError}</p>}
+      <p role="status" className="data-note">{departureBookmarkStatus}</p>
+      <ul className="departure-bookmark-list">{departureBookmarks.map(hash => {
+        const saved = parseDepartureLink(hash), time = japanTime(saved.at), line = LINES.find(line => line.id === saved.lineId);
+        const title = `${time.date} ${time.time.slice(0,5)} ${line.name}`;
+        const presentation = `${saved.angle === 'side' ? '横から' : '上から'} · ${Number.isInteger(saved.light) ? ['昼','夕','夜'][saved.light] : '保存した光'}`;
+        return <li key={hash}><button className="departure-bookmark-open" onClick={() => openSavedDeparture(hash)}><strong>{title}</strong><span>{presentation} → 再生へ</span></button><button className="departure-bookmark-delete" aria-label={`${title} ${presentation}のしおりを削除`} onClick={() => removeSavedDeparture(hash)}>削除</button></li>;
+      })}</ul>
+      {!departureBookmarks.length && <p className="empty-state">保存した発車はまだありません。</p>}
+      <p className="data-note">別の端末とは同期しません。ブラウザの閲覧データを消すとしおりも消えます。再生には対象月の時刻表が必要です。</p>
+    </Modal>}
+    {dialog === 'departure-arrive' && <Modal title={departureArrivalSource === 'bookmark' ? 'しおりの発車を、もう一度。' : 'リンクの発車を、もう一度。'} onClose={closeDepartureArrival}>
+      {incomingDeparture && <><p>{japanTime(incomingDeparture.at).date} · {japanTime(incomingDeparture.at).time} 発<br />{LINES.find(line=>line.id===incomingDeparture.lineId)?.name}</p><p>「再生する」で時計を発車5秒前へ。保存された視点と光で、1倍速で追いかけます。</p></>}
       {departureLinkError && <p role="alert" className="data-warning">{departureLinkError}</p>}
       {incomingDeparture && <button className="scene-link-copy" disabled={!ready || !data || departureLinkLoading} onClick={playDepartureLink}>{departureLinkLoading ? '時刻表を読み込み中…' : 'この発車を再生する'}</button>}
       <p className="data-note">収録時刻表による再現です。遅延・運休は反映しません。対象の時刻表を取得できない場合は再生できません。</p>
