@@ -13,7 +13,7 @@ import { Daylight, periods } from './daylight.js';
 
 export const views = [
   {name:'東京駅全景',position:[-545,785,475],target:[-10,15,0]},
-  {name:'丸の内駅舎',position:[-173,74,52],target:[-61,13,45]},
+  {name:'丸の内駅舎',position:[-205,115,130],target:[-51,14,0]},
   {name:'ホームと列車',position:[85,145,-310],target:[55,10,-60]},
   {name:'街を見渡す',position:[-870,1020,1040],target:[-20,15,0]},
   {name:'新幹線',position:[105,365,-335],target:[110,7,-10]},
@@ -148,6 +148,7 @@ export class Viewer {
     this.sun.intensity=p.sunPower;this.sun.position.copy(p.position);this.ambient.intensity=p.ambient;
     this.renderer.toneMappingExposure=p.exposure;this.ground.material.color.copy(p.ground);
     this.world.architecture.setNight(p.glow);this.world.stationArchitecture.setNight(p.glow);this.world.urban.setNight(p.glow);
+    this.world.stationModel.setNight(p.glow);
   }
   animate(now) {
     if(this.disposed)return;
@@ -216,6 +217,7 @@ export class Viewer {
     this.disposed=true;cancelAnimationFrame(this.animation);this.observer.disconnect();this.walkCamera.dispose();this.freeCamera.dispose();this.controls.dispose();
     const geometries=new Set(),materials=new Set();
     this.scene.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
-    geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.world.station.textures.forEach(t=>t.dispose());this.world.urban.textures.forEach(t=>t.dispose());this.renderer.domElement.removeEventListener('webglcontextlost',this.lost);this.renderer.dispose();this.renderer.domElement.remove();
+    this.world.stationModel.dispose();
+    geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.world.station.textures.forEach(t=>t.dispose());this.world.stationModel.textures.forEach(t=>t.dispose());this.world.urban.textures.forEach(t=>t.dispose());this.renderer.domElement.removeEventListener('webglcontextlost',this.lost);this.renderer.dispose();this.renderer.domElement.remove();
   }
 }

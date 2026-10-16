@@ -1,0 +1,29 @@
+{
+  "catalog": "https://www.geospatial.jp/ckan/dataset/plateau-13101-chiyoda-ku-2025",
+  "sourceArchive": "https://assets.cms.plateau.reearth.io/assets/3a/82ef79-fa18-4431-8e2a-924ba83e0ee3/13101_chiyoda-ku_pref_2025_3dtiles_mvt_1_op.zip",
+  "sourceEntry": "13101_chiyoda-ku_pref_2025_citygml_1_op_bldg_3dtiles_13101_chiyoda-ku_lod2/data/data446.b3dm",
+  "sourceSha256": "8535d013ac1a92c6c7a7067400616f10203a1caa96edb2304a5042d798b0f682",
+  "featureId": "bldg_6af58cef-669e-4aca-bc01-355e870d1ad5",
+  "batchId": 4,
+  "sourceEdition": 2025,
+  "meshCode": "53394611",
+  "triangles": 3165,
+  "bytes": 714400,
+  "sha256": "28345efc7c234acc65a811d6db6c1c0c2f1edf6cdb368fdaab58173691aa7658",
+  "boundsMetres": [
+    59.9615,
+    38.4145,
+    317.902
+  ],
+  "adaptations": [
+    "Extract station building; exclude other tile buildings",
+    "Decode Draco; retain source UVs, texture, vertex colours and surface normals",
+    "Rotate ECEF axes into the existing station frame; normalize ground height",
+    "At runtime align bounds centre to x=-51,z=0; ground y=1.1; do not apply procedural station z compression"
+  ],
+  "limitations": [
+    "Aerial-photo textures include shadows, scaffolding and blurred wall areas",
+    "LOD2 geometry is not a conservation survey or current construction status",
+    "Runtime floodlighting is an artistic approximation"
+  ]
+}

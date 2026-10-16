@@ -67,7 +67,8 @@ npm run preview
 - `src/data/tokyo-platforms.json`：出典付きホーム輪郭・線路の軌間データ
 - `src/data/tokyo-map.json`：出典付きのローカル地図データ
 - `scripts/prepare-map.py`：OSMデータの座標変換・形状生成
-- `src/engine/station.js`：駅舎の詳細形状、レンガ・スレート素材、アーチ窓、ドーム
+- `src/engine/station-model.js` / `public/models/tokyo-station/`：PLATEAU駅舎モデル、出典と加工記録、夜間照明
+- `src/engine/station.js`：読込失敗時の従来駅舎、レンガ・スレート素材、アーチ窓、ドーム
 - `src/engine/viewer.js`：カメラ、光、列車・車のアニメーション
 - `src/App.jsx`：画面操作
 - `src/style.css`：デスクトップ・モバイル表示

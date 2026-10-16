@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Architecture, random, makeTrain } from './geometry.js';
 import { buildStation } from './station.js';
+import { loadStationModel } from './station-model.js';
 import { buildUrban, map } from './urban.js';
 import { buildRailway } from './railway.js';
 import { createShinkansen } from './shinkansen.js';
@@ -10,8 +11,10 @@ export function createWorld(scene){
   const a=new Architecture(scene),rand=random(2026);
   const urban=buildUrban(scene,a);
   const stationRoot=new THREE.Group();stationRoot.scale.z=.90;scene.add(stationRoot);
-  const stationArchitecture=new Architecture(stationRoot);
+  const proceduralStation=new THREE.Group();stationRoot.add(proceduralStation);
+  const stationArchitecture=new Architecture(proceduralStation);
   const station=buildStation(stationArchitecture);stationArchitecture.finish();
+  const stationModel=loadStationModel(stationRoot,proceduralStation);
   const railway=buildRailway(a);a.finish();
   const colors=['#dc8e45','#32a7b7','#72a648','#dc8e45','#3778aa','#376bb0'];
   const trains=railway.routes.map((route,i)=>{
@@ -33,5 +36,5 @@ export function createWorld(scene){
     cars.push({model,route,offset:rand()*route.total,direction:route.road.oneway?1:i%2?1:-1});
   }
   const labels=[{name:'東京駅',position:new THREE.Vector3(-51,40,0)},...urban.labels,{name:'皇居外苑',position:new THREE.Vector3(-655,18,125)}];
-  return {architecture:a,stationArchitecture,station,urban,trains,cars,labels,mapStats:map.meta.counts,platformRoofs:railway.roofs};
+  return {architecture:a,stationArchitecture,station,stationModel,urban,trains,cars,labels,mapStats:map.meta.counts,platformRoofs:railway.roofs};
 }
