@@ -495,6 +495,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'station-plateau') { selectView(1); selectPeriod('day'); setDialog(null); setMenusHidden(true); return; }
     if (action === 'departure-bookmarks') { openDepartureBookmarks(); return; }
     if (action === 'departure-cinema') { if(watchedToday && follow){setDialog(null);startCinema();}else {watchDeparture();notify('発車を見たら「景色だけで鑑賞」を押してください。');} return; }
     if (action === 'departure-link') { if(departureToReplay)openDepartureLink();else {watchDeparture();notify('発車を見たら「この発車のリンク」で保存・共有できます。');} return; }
