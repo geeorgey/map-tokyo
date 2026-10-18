@@ -10,6 +10,7 @@ import { updateShinkansen } from './shinkansen.js';
 import { sampleServiceMotion } from './train-motion.js';
 import { FollowCamera } from './follow-camera.js';
 import { Daylight, periods } from './daylight.js';
+import { STATION_CLOSEUPS } from '../data/station-closeups.js';
 
 export const views = [
   {name:'東京駅全景',position:[-545,785,475],target:[-10,15,0]},
@@ -132,8 +133,19 @@ export class Viewer {
     if(views[index].name==='新幹線')for(const train of this.world.trains){
       if(train.kind==='shinkansen')train.initialPhase=train.travel+(train.type==='n700'?-5:2)-this.time;
     }
+    this.moveToView(views[index]);
+  }
+  setStationCloseup(id) {
+    const pose=STATION_CLOSEUPS.find(item=>item.id===id);
+    if(!pose)return false;
+    this.stopTour('view');
+    if(this.walkCamera.active)this.setWalk(false);
+    this.setFollow(false);this.controls.autoRotate=false;
+    this.moveToView(pose);
+    return true;
+  }
+  moveToView(v) {
     this.clearOrbitMomentum();this.freeCamera.stop();this.controls.enabled=true;
-    const v=views[index];
     if(matchMedia('(prefers-reduced-motion: reduce)').matches){this.camera.position.fromArray(v.position);this.controls.target.fromArray(v.target);this.camera.lookAt(this.controls.target);this.transition=null;return;}
     this.transition={start:performance.now(),from:this.camera.position.clone(),to:new THREE.Vector3(...v.position),targetFrom:this.controls.target.clone(),targetTo:new THREE.Vector3(...v.target)};
   }
