@@ -12,6 +12,7 @@ import WalkMap from './WalkMap.jsx';
 import { readWalkResume, saveWalkResume } from './walk-resume.mjs';
 import { WALK_SPOTS } from './data/walk-spots.js';
 import { STATION_CLOSEUPS } from './data/station-closeups.js';
+import { parseStationLink, makeStationLink } from './station-link.mjs';
 import TrainDialog from './TrainInspector.jsx';
 import updates from './data/updates.json';
 import { trackFeature } from './analytics.mjs';
@@ -156,6 +157,22 @@ export default function App() {
   const departureToWatch = nextDeparture(events, now, watchedCursor, departureLine);
   const departureToReplay = replayDeparture(events, watchedToday);
   const refresh = () => setNow(clock.now());
+
+  useEffect(() => {
+    if (!ready) return;
+    function arrive() {
+      if (!new URLSearchParams(window.location.hash.slice(1)).has('station')) return;
+      const pose = parseStationLink(window.location.hash);
+      if (!pose) { notify('この駅舎のリンクは使えません。駅舎の近景から選び直せます。'); return; }
+      selectStationCloseup(pose.id);
+      const light = engine.current.daylight;
+      light.setRunning(false); light.phase = pose.light; light.sample(); engine.current.applyDaylight();
+      setPeriod(Number.isInteger(pose.light) ? ['day','evening','night'][pose.light] : null); setDaylightCycle(false);
+      trackFeature('station_link_arrive', { detail_id: pose.id });
+    }
+    arrive(); window.addEventListener('hashchange', arrive);
+    return () => window.removeEventListener('hashchange', arrive);
+  }, [ready]);
 
   useEffect(() => { if (walking || follow || tour) setStationCloseup(null); }, [walking, follow, tour]);
 
@@ -369,7 +386,7 @@ export default function App() {
     setSceneLink(url);setLinkCopied(false);setDialog('scene-link');trackFeature('scene_link_open');
   }
   async function copySceneLink() {
-    try {await navigator.clipboard.writeText(sceneLink);setLinkCopied(true);trackFeature(dialog === 'departure-link' ? 'departure_link_copy' : 'scene_link_copy');}
+    try {await navigator.clipboard.writeText(sceneLink);setLinkCopied(true);trackFeature(dialog === 'departure-link' ? 'departure_link_copy' : dialog === 'station-link' ? 'station_link_copy' : 'scene_link_copy');}
     catch {setLinkCopied(false);notify('リンク欄を長押し、または選択してコピーしてください。');}
   }
   function selectCameraMode(enabled) { engine.current?.setFreeMode(enabled);setFreeMode(enabled);setFollow(false);setRotate(false);trackFeature('camera_mode_select',{mode:enabled?'free':'orbit'}); }
@@ -387,6 +404,12 @@ export default function App() {
     trackFeature(stationCloseup ? 'station_closeup_select' : 'station_closeup_open', { detail_id: id });
     setStationCloseup(id); setWalking(false); setView(-1); setFollow(false); setRotate(false);
     setDialog(null); setViewsOpen(false); setMenusHidden(true);
+  }
+  function openStationLink() {
+    const link = makeStationLink(window.location.origin, stationCloseup, engine.current?.daylight.phase);
+    if (!link) return;
+    setSceneLink(link); setLinkCopied(false); setDialog('station-link');
+    trackFeature('station_link_open', { detail_id: stationCloseup });
   }
   function seek(event) { clock.seek(event.at - 30000); clock.setPaused(false); refresh(); setRoofHidden(true); }
   function watchDeparture() {
@@ -508,6 +531,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'station-link') { selectStationCloseup(); return; }
     if (action === 'station-closeups') { selectStationCloseup(); return; }
     if (action === 'station-plateau') { selectView(1); selectPeriod('day'); setDialog(null); setMenusHidden(true); return; }
     if (action === 'departure-bookmarks') { openDepartureBookmarks(); return; }
@@ -542,6 +566,7 @@ export default function App() {
       <div className="closeup-heading"><strong>駅舎の近景</strong><button onClick={() => { setStationCloseup(null); trackFeature('station_closeup_end'); }}>鑑賞を終える</button></div>
       <div className="closeup-views" role="group" aria-label="駅舎の場所">{STATION_CLOSEUPS.map(item => <button key={item.id} aria-pressed={stationCloseup === item.id} onClick={() => selectStationCloseup(item.id)}>{item.name}</button>)}</div>
       <div className="closeup-lights" role="group" aria-label="近景の光">{[['day','昼'],['evening','夕'],['night','夜']].map(([value,label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}<small>ドラッグで見回せます</small></div>
+      <button className="closeup-share" onClick={openStationLink}>この場所と光のリンク ↗</button>
     </section>}
     {cinema && <div className="cinema-controls glass" role="toolbar" aria-label="景色だけで鑑賞">
       <button className="cinema-pause" aria-label={clock.paused ? '鑑賞中の列車を再開' : '鑑賞中の列車を一時停止'} onClick={() => { clock.setPaused(!clock.paused); refresh(); }}>{clock.paused ? '▶' : 'Ⅱ'}</button>
@@ -626,6 +651,13 @@ export default function App() {
       <p role="status" className="data-note">{linkCopied ? '発車のリンクをコピーしました。' : 'コピーできない場合は、リンク欄を選択してコピーできます。'}</p>
       <a className="scene-link-preview" href={sceneLink} target="_blank" rel="noreferrer">この発車のリンクを開く ↗</a>
       <p className="data-note">視点は「上から / 横から」の選択を保存。手動で動かした角度は含みません。収録時刻表による再現で、将来その月のデータを取得できない場合は再生できません。</p>
+    </Modal>}
+    {dialog === 'station-link' && <Modal title="駅舎の場所と光を、持ち帰る。" onClose={() => setDialog(null)}>
+      <p>選んだ屋根・ドームの開始位置と、今の光へ戻れるリンクです。ドラッグした角度は含まず、時計は開いたときの現在時刻です。</p>
+      <label className="scene-link-label">駅舎のリンク<input aria-label="駅舎のリンク" value={sceneLink} readOnly onFocus={event => event.target.select()} /></label>
+      <button className="scene-link-copy" onClick={copySceneLink}>{linkCopied ? 'コピーしました ✓' : 'リンクをコピー'}</button>
+      <p role="status" className="data-note">{linkCopied ? 'あとで同じ場所と光を眺められます。' : 'コピーできない場合は、リンク欄を選択してコピーできます。'}</p>
+      <a className="scene-link-preview" href={sceneLink} target="_blank" rel="noreferrer">この駅舎のリンクを開く ↗</a>
     </Modal>}
     {dialog === 'scene-link' && <Modal title="この景色から、また歩こう。" onClose={() => setDialog(null)}>
       <p>散策の位置・向き・光を、リンクにしました。保存して戻ってきたり、この景色を誰かに見せたりできます。</p>
