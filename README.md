@@ -174,10 +174,10 @@ npm run deploy
 
 ## 公式時刻表と公開手順
 
-同梱時刻表はJR東日本の2026年9月号です。7路線・方向と運転日限定列車330件の運行日を取得。祝日は内閣府データを使います。別月は既存Workerの `/api/station`、`/api/calendars`、`/api/holidays` で取得し、未掲載・不完全なデータでは列車を表示しません。出典と提供元の利用条件は [復旧版の出典案内](recovery/realtime-2026-09-06/THIRD-PARTY-NOTICES.md) を参照してください。
+初期同梱時刻表はJR東日本の2026年9月号です。2026年10月号は検証済みの月別スナップショット（`public/data/months/2026-10.json`）を優先して読み込みます。7路線・方向と運転日限定列車330件の運行日を取得。祝日は内閣府データを使います。別月は既存Workerの `/api/station`、`/api/calendars`、`/api/holidays` で取得し、未掲載・不完全なデータでは列車を表示しません。出典と提供元の利用条件は [復旧版の出典案内](recovery/realtime-2026-09-06/THIRD-PARTY-NOTICES.md) を参照してください。
 
 ```sh
-npm run timetable -- 2026-09 --fresh
+npm run timetable -- 2026-10 --fresh
 npm test
 npm run build
 npx wrangler whoami

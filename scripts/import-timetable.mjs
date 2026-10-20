@@ -56,4 +56,6 @@ validateTimetable(data);
 const dest = new URL('../public/data/timetable.json', import.meta.url);
 await writeFile(new URL('../public/data/timetable.next.json', import.meta.url), JSON.stringify(data));
 await rename(new URL('../public/data/timetable.next.json', import.meta.url), dest);
+await mkdir(new URL('../public/data/months/', import.meta.url), { recursive: true });
+await writeFile(new URL(`../public/data/months/${month}.json`, import.meta.url), JSON.stringify(data));
 console.log(`保存完了: ${data.month} / ${data.retrievedAt}`);

@@ -63,7 +63,10 @@ export default {
     }
     let response;
     try { response = await serveApi(request); }
-    catch { response = json({ ok: false, error: 'この月の公式時刻表を取得できませんでした。未掲載、または提供元が一時的に利用できません。' }, 300); }
+    catch {
+      response = json({ ok: false, error: 'この月の公式時刻表を取得できませんでした。未掲載、または提供元が一時的に利用できません。' }, 0, 503);
+      response.headers.set('Cache-Control', 'no-store');
+    }
     if (request.method === 'GET' && response.ok) ctx.waitUntil(cache.put(key, response.clone()));
     return response;
   },

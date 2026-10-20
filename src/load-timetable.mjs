@@ -1,12 +1,36 @@
 import { LINES, validateTimetable } from './timetable.mjs';
 
 export async function loadMonth(month, signal, onProgress = () => {}) {
+  if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('日付が不正です。');
+  // Publish verified month snapshots so visitors need not fetch hundreds of
+  // individual operating calendars before seeing any departures.
+  try {
+    const response = await fetch(`/data/months/${month}.json`, { signal });
+    if (response.ok) {
+      const snapshot = validateTimetable(await response.json());
+      if (snapshot.month === month) return snapshot;
+    }
+  } catch (error) {
+    if (signal?.aborted || error.name === 'AbortError') throw error;
+  }
   async function request(path) {
-    const response = await fetch(path, { signal });
-    if (!response.ok) throw new Error('時刻表の取得に失敗しました。');
-    const result = await response.json();
-    if (!result.ok) throw new Error(result.error);
-    return result;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(path, { signal, cache: 'no-cache' });
+        const result = await response.json();
+        if (response.ok && result.ok) return result;
+        const error = new Error(result.error || '時刻表の取得に失敗しました。');
+        if (response.status >= 400 && response.status < 500) throw Object.assign(error, { permanent: true });
+        throw error;
+      } catch (error) {
+        if (signal?.aborted || error.name === 'AbortError' || error.permanent || attempt === 2) throw error;
+        await new Promise((resolve, reject) => {
+          const onAbort = () => { clearTimeout(timer); reject(signal.reason); };
+          const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, 500 * (attempt + 1));
+          signal?.addEventListener('abort', onAbort, { once: true });
+        });
+      }
+    }
   }
   const data = { schemaVersion: 1, month, retrievedAt: new Date().toISOString(), source: 'https://timetables.jreast.co.jp/timetable/list1039.html', holidaySource: 'https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv', holidays: {}, lines: {} };
   onProgress('公式時刻表を取得しています…');
