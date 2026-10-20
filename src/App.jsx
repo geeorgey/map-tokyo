@@ -13,6 +13,7 @@ import { readWalkResume, saveWalkResume } from './walk-resume.mjs';
 import { WALK_SPOTS } from './data/walk-spots.js';
 import { STATION_CLOSEUPS } from './data/station-closeups.js';
 import { parseStationLink, makeStationLink } from './station-link.mjs';
+import { readStationBookmarks, saveStationBookmark, deleteStationBookmark } from './station-bookmarks.mjs';
 import TrainDialog from './TrainInspector.jsx';
 import updates from './data/updates.json';
 import { trackFeature } from './analytics.mjs';
@@ -103,6 +104,9 @@ export default function App() {
   const [daylightCycle, setDaylightCycle] = useState(false);
   const [view, setView] = useState(0);
   const [stationCloseup, setStationCloseup] = useState(null);
+  const [stationBookmarks, setStationBookmarks] = useState([]);
+  const [stationBookmarkHash, setStationBookmarkHash] = useState(null);
+  const [stationBookmarkMessage, setStationBookmarkMessage] = useState('');
   const [labels, setLabels] = useState(false);
   const [rotate, setRotate] = useState(false);
   const [roofHidden, setRoofHidden] = useState(false);
@@ -164,10 +168,7 @@ export default function App() {
       if (!new URLSearchParams(window.location.hash.slice(1)).has('station')) return;
       const pose = parseStationLink(window.location.hash);
       if (!pose) { notify('この駅舎のリンクは使えません。駅舎の近景から選び直せます。'); return; }
-      selectStationCloseup(pose.id);
-      const light = engine.current.daylight;
-      light.setRunning(false); light.phase = pose.light; light.sample(); engine.current.applyDaylight();
-      setPeriod(Number.isInteger(pose.light) ? ['day','evening','night'][pose.light] : null); setDaylightCycle(false);
+      restoreStation(pose);
       trackFeature('station_link_arrive', { detail_id: pose.id });
     }
     arrive(); window.addEventListener('hashchange', arrive);
@@ -411,6 +412,29 @@ export default function App() {
     setSceneLink(link); setLinkCopied(false); setDialog('station-link');
     trackFeature('station_link_open', { detail_id: stationCloseup });
   }
+  function restoreStation(pose) {
+    selectStationCloseup(pose.id);
+    const light = engine.current.daylight;
+    light.setRunning(false); light.phase = pose.light; light.sample(); engine.current.applyDaylight();
+    setPeriod(Number.isInteger(pose.light) ? ['day','evening','night'][pose.light] : null); setDaylightCycle(false);
+  }
+  function openStationBookmarks() {
+    setStationBookmarkMessage(''); setStationBookmarkHash(null);
+    try {
+      setStationBookmarks(readStationBookmarks(window.localStorage));
+      const link = makeStationLink(window.location.origin, stationCloseup, engine.current?.daylight.phase);
+      if (link) setStationBookmarkHash(new URL(link).hash);
+    } catch { setStationBookmarks([]); setStationBookmarkMessage('近景のしおりを読み込めません。ブラウザの保存設定をご確認ください。'); }
+    setDialog('station-bookmarks'); trackFeature('station_bookmarks_open');
+  }
+  function saveStationFavorite() {
+    try { setStationBookmarks(saveStationBookmark(window.localStorage, stationBookmarkHash)); setStationBookmarkMessage('この場所と光を保存しました。'); trackFeature('station_bookmark_save'); }
+    catch (error) { setStationBookmarkMessage(error.message || '保存できませんでした。'); }
+  }
+  function deleteStationFavorite(hash) {
+    try { setStationBookmarks(deleteStationBookmark(window.localStorage, hash)); setStationBookmarkMessage('しおりを削除しました。'); trackFeature('station_bookmark_delete'); }
+    catch { setStationBookmarkMessage('削除できませんでした。ブラウザの保存設定をご確認ください。'); }
+  }
   function seek(event) { clock.seek(event.at - 30000); clock.setPaused(false); refresh(); setRoofHidden(true); }
   function watchDeparture() {
     const event = nextDeparture(events, clock.now(), watchedCursor, departureLine);
@@ -531,6 +555,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'station-bookmarks') { openStationBookmarks(); return; }
     if (action === 'station-link') { selectStationCloseup(); return; }
     if (action === 'station-closeups') { selectStationCloseup(); return; }
     if (action === 'station-plateau') { selectView(1); selectPeriod('day'); setDialog(null); setMenusHidden(true); return; }
@@ -567,6 +592,7 @@ export default function App() {
       <div className="closeup-views" role="group" aria-label="駅舎の場所">{STATION_CLOSEUPS.map(item => <button key={item.id} aria-pressed={stationCloseup === item.id} onClick={() => selectStationCloseup(item.id)}>{item.name}</button>)}</div>
       <div className="closeup-lights" role="group" aria-label="近景の光">{[['day','昼'],['evening','夕'],['night','夜']].map(([value,label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectPeriod(value)}>{label}</button>)}<small>ドラッグで見回せます</small></div>
       <button className="closeup-share" onClick={openStationLink}>この場所と光のリンク ↗</button>
+      <button className="closeup-share" onClick={openStationBookmarks}>近景のしおり ↗</button>
     </section>}
     {cinema && <div className="cinema-controls glass" role="toolbar" aria-label="景色だけで鑑賞">
       <button className="cinema-pause" aria-label={clock.paused ? '鑑賞中の列車を再開' : '鑑賞中の列車を一時停止'} onClick={() => { clock.setPaused(!clock.paused); refresh(); }}>{clock.paused ? '▶' : 'Ⅱ'}</button>
@@ -651,6 +677,17 @@ export default function App() {
       <p role="status" className="data-note">{linkCopied ? '発車のリンクをコピーしました。' : 'コピーできない場合は、リンク欄を選択してコピーできます。'}</p>
       <a className="scene-link-preview" href={sceneLink} target="_blank" rel="noreferrer">この発車のリンクを開く ↗</a>
       <p className="data-note">視点は「上から / 横から」の選択を保存。手動で動かした角度は含みません。収録時刻表による再現で、将来その月のデータを取得できない場合は再生できません。</p>
+    </Modal>}
+    {dialog === 'station-bookmarks' && <Modal title="近景のしおり" onClose={() => setDialog(null)}>
+      <p>屋根・ドームの開始位置と光を、このブラウザに5件まで保存。時計は変えずに眺め直せます。ドラッグした角度は含まず、別端末とは同期しません。</p>
+      {stationBookmarkHash ? <button className="scene-link-copy" onClick={saveStationFavorite}>今の場所と光を保存</button> : <button className="scene-link-copy" onClick={() => selectStationCloseup()}>近景を選びに行く</button>}
+      <p role="status" className="data-note">{stationBookmarkMessage}</p>
+      <div className="station-favorites">{stationBookmarks.map(hash => {
+        const pose = parseStationLink(hash);
+        const name = `${STATION_CLOSEUPS.find(item => item.id === pose.id).name} · ${Number.isInteger(pose.light) ? ['昼','夕','夜'][pose.light] : '光の途中'}`;
+        return <div key={hash}><span>{name}</span><button onClick={() => { restoreStation(pose); trackFeature('station_bookmark_restore', { detail_id: pose.id }); }} aria-label={`${name}を眺める`}>眺める</button><button onClick={() => deleteStationFavorite(hash)} aria-label={`${name}のしおりを削除`}>削除</button></div>;
+      })}</div>
+      {!stationBookmarks.length && <p className="data-note">保存した近景はまだありません。</p>}
     </Modal>}
     {dialog === 'station-link' && <Modal title="駅舎の場所と光を、持ち帰る。" onClose={() => setDialog(null)}>
       <p>選んだ屋根・ドームの開始位置と、今の光へ戻れるリンクです。ドラッグした角度は含まず、時計は開いたときの現在時刻です。</p>
