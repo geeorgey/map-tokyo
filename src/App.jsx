@@ -1,3 +1,4 @@
+import { readPreferredLine, savePreferredLine, clearPreferredLine } from './preferred-line.mjs';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { readBookmarks, addBookmark, removeBookmark } from './scene-bookmarks.mjs';
 import { parseSceneLink, makeSceneLink } from './scene-link.mjs';
@@ -114,7 +115,9 @@ export default function App() {
   const [followName, setFollowName] = useState('N700系');
   const [tour, setTour] = useState(null);
   const [watchedDeparture, setWatchedDeparture] = useState(null);
-  const [departureLine, setDepartureLine] = useState('all');
+  const [preferredLine, setPreferredLine] = useState(() => { try { return readPreferredLine(window.localStorage); } catch { return null; } });
+  const [departureLine, setDepartureLine] = useState(() => preferredLine || 'all');
+  useEffect(() => { if (preferredLine) trackFeature('preferred_line_restore', { line_id: preferredLine }); }, []);
   const [departureAngle, setDepartureAngle] = useState('above');
   const [cinema, setCinema] = useState(false);
   const cinemaStarted = useRef(null);
@@ -552,9 +555,18 @@ export default function App() {
     if (engine.current?.setFollow(true)) { setFollow(true); setFollowName('N700系'); setView(-1); setRotate(false); setRoofHidden(true); }
     else notify('現在、N700系は画面内にいません。時刻表から次の発車へ移動できます。');
   }
+  function rememberDepartureLine(clear = false) {
+    try {
+      const saved = clear ? clearPreferredLine(window.localStorage) : savePreferredLine(window.localStorage, departureLine);
+      setPreferredLine(saved);
+      notify(clear ? 'いつもの路線の記憶を解除しました。今の選択はそのままです。' : 'このブラウザに路線を覚えました。次に開いたときもこの路線を選びます。');
+      trackFeature(clear ? 'preferred_line_clear' : 'preferred_line_save', { line_id: saved || preferredLine });
+    } catch { notify('路線を保存できませんでした。ブラウザの保存設定を確認してください。'); }
+  }
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'preferred-line') { if(walking)selectView(0); engine.current?.stopTour('manual'); setDialog(null); setMenusHidden(true); notify('路線を選んで「この路線を覚える」。次に開いたときも同じ路線を選びます。'); requestAnimationFrame(()=>document.getElementById('departure-line')?.focus()); return; }
     if (action === 'station-bookmarks') { openStationBookmarks(); return; }
     if (action === 'station-link') { selectStationCloseup(); return; }
     if (action === 'station-closeups') { selectStationCloseup(); return; }
@@ -603,6 +615,7 @@ export default function App() {
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
     {!walking && !tour && <section className={`departure-watch glass ${watchedToday && follow ? 'is-following' : ''}`} aria-label="発車を見に行く">
       <div className="departure-heading"><label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label><button className="departure-bookmarks-entry" onClick={openDepartureBookmarks}>発車のしおり</button></div>
+      <div className="preferred-line"><button disabled={departureLine === 'all' || departureLine === preferredLine} onClick={() => rememberDepartureLine()}>{departureLine === preferredLine ? 'この路線を記憶済み' : 'この路線を覚える'}</button>{preferredLine && <><span>いつもの路線：{LINES.find(line => line.id === preferredLine)?.name}</span><button aria-label="いつもの路線の記憶を解除" onClick={() => rememberDepartureLine(true)}>解除</button></>}</div>
       <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
       {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{[['above','上から'],['side','横から']].map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
       {departureToReplay && <button className="departure-share" onClick={openDepartureLink}>この発車のリンク ↗</button>}
