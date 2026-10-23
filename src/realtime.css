@@ -110,3 +110,5 @@ select{font:inherit;color:inherit;border:0;border-radius:5px;background:#fff7;cu
 
 /* Keep discovery and saved-route controls from squeezing the departure camera actions. */
 .departure-watch{flex-wrap:wrap;justify-content:center}.departure-watch>.preferred-line{flex-basis:100%;order:2;justify-content:center;margin:0}.departure-watch>.departure-actions{min-width:0;flex-wrap:wrap;justify-content:center}.departure-angles{flex-shrink:0}
+
+.departure-lights{min-width:132px}.departure-lights>small{margin-top:3px;font-size:9px}.departure-lights button{min-width:36px}
