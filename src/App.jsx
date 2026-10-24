@@ -466,6 +466,12 @@ export default function App() {
     trackFeature(replay ? 'departure_replay' : 'departure_watch', { line_id: event.lineId, selected_line: selectedLine });
     notify(`${replay ? 'もう一度：' : ''}${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
   }
+  function toggleDeparturePause() {
+    if (!watchedToday || !follow) return;
+    clock.setPaused(!clock.paused);
+    refresh();
+    trackFeature('departure_pause_select', { paused: clock.paused, line_id: watchedToday.lineId });
+  }
   function selectDepartureLight(value) {
     if (!watchedToday || !follow) return;
     selectPeriod(value);
@@ -578,6 +584,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-pause') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); return; }
     if (action === 'departure-light') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); return; }
     if (action === 'departure-draw') { drawNextDeparture(); return; }
     if (action === 'preferred-line') { if(walking)selectView(0); engine.current?.stopTour('manual'); setDialog(null); setMenusHidden(true); notify('路線を選んで「この路線を覚える」。次に開いたときも同じ路線を選びます。'); requestAnimationFrame(()=>document.getElementById('departure-line')?.focus()); return; }
@@ -633,6 +640,7 @@ export default function App() {
       <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
       {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{[['above','上から'],['side','横から']].map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
       {watchedToday && follow && <div className="departure-angles departure-lights" role="group" aria-label="発車の光"><span>{daylightCycle ? '発車の光 · 自動巡回中' : '発車の光'}</span><div>{[['day','昼'],['evening','夕'],['night','夜']].map(([value,label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectDepartureLight(value)}>{label}</button>)}</div><small>時計はそのまま</small></div>}
+      {watchedToday && follow && <button className="departure-pause" aria-label={clock.paused ? '発車鑑賞を再開' : '発車鑑賞を一時停止'} aria-pressed={clock.paused} title="すべての列車と時計を停止・再開。光と視点は操作できます。" onClick={toggleDeparturePause}>{clock.paused ? '列車・時計を再開 ▶' : '列車・時計を停止 Ⅱ'}</button>}
       {departureToReplay && <button className="departure-share" onClick={openDepartureLink}>この発車のリンク ↗</button>}
       {watchedToday && follow && <button className="departure-cinema" ref={cinemaEntry} onClick={startCinema}>景色だけで鑑賞</button>}
       {watchedToday && <button className="departure-return" onClick={returnFromDeparture}>現在時刻へ</button>}</div>
