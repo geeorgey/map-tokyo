@@ -9,3 +9,11 @@ export function replayDeparture(events, watched) {
   if (!watched) return null;
   return events.find(event => event.at === watched.at && event.lineId === watched.lineId) || null;
 }
+
+// Rewind within this exact departure and operating day; never seek forward.
+export function rewindDeparture(events, watched, now, serviceStart = -Infinity) {
+  const event = replayDeparture(events, watched);
+  if (!event || !Number.isFinite(now)) return null;
+  const start = Math.max(event.at - 5000, serviceStart);
+  return now > start ? Math.max(start, now - 5000) : null;
+}

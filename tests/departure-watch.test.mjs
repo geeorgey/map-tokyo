@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { eventsForDay } from '../src/schedule.mjs';
-import { nextDeparture, replayDeparture } from '../src/departure-watch.mjs';
+import { nextDeparture, replayDeparture, rewindDeparture } from '../src/departure-watch.mjs';
 
 const data = JSON.parse(await readFile(new URL('../public/data/timetable.json', import.meta.url)));
 const ts = value => Date.parse(value + '+09:00');
@@ -55,4 +55,27 @@ test('replay resolves the exact watched line and time only in the current datase
   assert.equal(replayDeparture(events, null), null);
   assert.equal(replayDeparture(events, {...watched, lineId:'missing'}), null);
   assert.ok(nextDeparture(events, watched.at-5000, watched.at, watched.lineId).at > watched.at);
+});
+
+test('short rewind stays in the watched departure and stops at its lead-in', () => {
+  const event = {at:100000, lineId:'chuo'};
+  assert.equal(rewindDeparture([event],event,112000),107000);
+  assert.equal(rewindDeparture([event],event,97000),95000);
+  assert.equal(rewindDeparture([event],event,95000),null);
+  assert.equal(rewindDeparture([event],event,94000),null);
+  assert.equal(rewindDeparture([],event,112000),null);
+  assert.equal(rewindDeparture([event],{...event,lineId:'missing'},112000),null);
+  assert.equal(rewindDeparture([event],event,NaN),null);
+});
+test('short rewind cannot cross the three-am service-day boundary', () => {
+  const start=ts('2026-10-26T03:00:00'), event={at:start+3000,lineId:'chuo'};
+  assert.equal(rewindDeparture([event],event,start+4000,start),start);
+  assert.equal(rewindDeparture([event],event,start,start),null);
+});
+test('seeking a short rewind preserves pause and half-speed playback', async () => {
+  const {SimulationClock}=await import('../src/clock.mjs');
+  const c=new SimulationClock({wallNow:()=>112000,monotonicNow:()=>0});c.seek(112000);c.setSpeed(0.5);c.setPaused(true);
+  const event={at:100000,lineId:'chuo'};
+  c.seek(rewindDeparture([event],event,c.now()));
+  assert.equal(c.now(),107000);assert.equal(c.speed,0.5);assert.equal(c.paused,true);
 });
