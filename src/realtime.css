@@ -112,3 +112,12 @@ select{font:inherit;color:inherit;border:0;border-radius:5px;background:#fff7;cu
 .departure-watch{flex-wrap:wrap;justify-content:center}.departure-watch>.preferred-line{flex-basis:100%;order:2;justify-content:center;margin:0}.departure-watch>.departure-actions{min-width:0;flex-wrap:wrap;justify-content:center}.departure-angles{flex-shrink:0}
 
 .departure-lights{min-width:132px}.departure-lights>small{margin-top:3px;font-size:9px}.departure-lights button{min-width:36px}
+
+/* Optional compact transport controls preserve the same scene and clock. */
+.departure-mini-caption{display:none!important}
+.departure-watch.is-compact{width:max-content;max-width:calc(100vw - 28px);bottom:22px;flex-direction:column;gap:5px;padding:10px 12px}
+.departure-watch.is-compact>.departure-heading,.departure-watch.is-compact>.preferred-line,.departure-watch.is-compact .departure-actions>div,.departure-watch.is-compact .departure-share,.departure-watch.is-compact .departure-cinema,.departure-watch.is-compact .departure-return{display:none}
+.departure-watch.is-compact>.departure-mini-caption{display:block!important}
+.departure-watch.is-compact>.departure-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:5px;width:100%}
+.departure-watch.is-compact .departure-actions>button{flex:1 1 auto;width:auto;min-height:44px;padding:8px;font-size:12px}
+@media(max-width:600px){.departure-watch.is-compact{left:14px;right:14px;width:auto;bottom:max(22px,env(safe-area-inset-bottom));max-width:none}}
