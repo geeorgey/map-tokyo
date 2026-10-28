@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { eventsForDay } from '../src/schedule.mjs';
-import { nextDeparture, replayDeparture, rewindDeparture } from '../src/departure-watch.mjs';
+import { nextDeparture, replayDeparture, rewindDeparture, departureProgress } from '../src/departure-watch.mjs';
 
 const data = JSON.parse(await readFile(new URL('../public/data/timetable.json', import.meta.url)));
 const ts = value => Date.parse(value + '+09:00');
@@ -78,4 +78,25 @@ test('seeking a short rewind preserves pause and half-speed playback', async () 
   const event={at:100000,lineId:'chuo'};
   c.seek(rewindDeparture([event],event,c.now()));
   assert.equal(c.now(),107000);assert.equal(c.speed,0.5);assert.equal(c.paused,true);
+});
+
+test('departure progress distinguishes the exact departure boundary without early zero', () => {
+  const event={at:100000};
+  assert.equal(departureProgress(event,95000),'発車まであと5秒');
+  assert.equal(departureProgress(event,99999),'発車まであと1秒');
+  assert.equal(departureProgress(event,100000),'発車から0秒');
+  assert.equal(departureProgress(event,160999),'発車から1分00秒');
+  assert.equal(departureProgress(null,100000),null);
+  assert.equal(departureProgress(event,NaN),null);
+});
+test('progress uses paused/half-speed simulation time and follows rewind rather than wall time', async () => {
+  const {SimulationClock}=await import('../src/clock.mjs');
+  let mono=0;const c=new SimulationClock({wallNow:()=>95000,monotonicNow:()=>mono});
+  const event={at:100000,lineId:'chuo'};c.seek(95000);c.setSpeed(0.5);mono=4000;
+  assert.equal(departureProgress(event,c.now()),'発車まであと3秒');
+  c.setPaused(true);mono=12000;
+  assert.equal(departureProgress(event,c.now()),'発車まであと3秒');
+  c.seek(rewindDeparture([event],event,c.now()));
+  assert.equal(departureProgress(event,c.now()),'発車まであと5秒');
+  assert.equal(c.paused,true);assert.equal(c.speed,0.5);
 });

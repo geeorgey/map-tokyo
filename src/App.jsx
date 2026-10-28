@@ -7,7 +7,7 @@ import { TOUR_STOPS } from './engine/station-tour.js';
 import { createSceneDraw } from './scene-draw.mjs';
 import { parseDepartureLink, makeDepartureLink, resolveDepartureLink } from './departure-link.mjs';
 import { readDepartureBookmarks, saveDepartureBookmark, deleteDepartureBookmark } from './departure-bookmarks.mjs';
-import { nextDeparture, replayDeparture, rewindDeparture } from './departure-watch.mjs';
+import { nextDeparture, replayDeparture, rewindDeparture, departureProgress } from './departure-watch.mjs';
 import FreeControls from './FreeControls.jsx';
 import WalkControls from './WalkControls.jsx';
 import WalkMap from './WalkMap.jsx';
@@ -165,6 +165,7 @@ export default function App() {
   const watchedCursor = watchedToday && (departureLine === 'all' || departureLine === watchedToday.lineId) ? watchedToday.at : undefined;
   const departureToWatch = nextDeparture(events, now, watchedCursor, departureLine);
   const departureToReplay = replayDeparture(events, watchedToday);
+  const progress = watchedToday && follow ? departureProgress(watchedToday, now) : null;
   const refresh = () => setNow(clock.now());
   useEffect(() => { if (!watchedToday || !follow) setDepartureCompact(false); }, [Boolean(watchedToday), follow]);
 
@@ -606,6 +607,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-progress') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); return; }
     if (action === 'departure-compact') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); setDepartureCompact(true); return; }
     if (action === 'departure-rewind') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); return; }
     if (action === 'departure-slow') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); return; }
@@ -660,10 +662,10 @@ export default function App() {
     {!walking && !tour && <button className="scene-draw glass" disabled={!ready} onClick={drawScene} title="6つの視点と光から一景へ。時計はそのまま。">景色くじ ◇</button>}
     {!walking && !tour && <button className="tour-entry glass" disabled={!ready} onClick={startTour}>24秒ツアー ▶</button>}
     {!walking && !tour && <section className={`departure-watch glass ${watchedToday && follow ? 'is-following' : ''} ${departureCompact && watchedToday && follow ? 'is-compact' : ''}`} aria-label="発車を見に行く">
-      {watchedToday && follow && <small className="departure-mini-caption">{watchedToday.time} {watchedToday.lineName}を鑑賞</small>}
+      {watchedToday && follow && <small className="departure-mini-caption">{watchedToday.time} {watchedToday.lineName}を鑑賞<span className="departure-progress" title="時刻表を再現する時計に連動。実際の遅延は未反映。">{progress} · 再現時計{clock.paused ? ' · 停止中' : ''}</span></small>}
       <div className="departure-heading"><label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label><button className="departure-bookmarks-entry" onClick={openDepartureBookmarks}>発車のしおり</button></div>
       <div className="preferred-line"><button disabled={!ready || !context.supported || !events.some(event => event.at > Math.max(now, watchedToday?.at ?? -Infinity))} title="全路線から次の発車をおまかせ。いつもの路線の保存は変えません。" onClick={drawNextDeparture}>全路線から発車くじ ◇</button><button disabled={departureLine === 'all' || departureLine === preferredLine} onClick={() => rememberDepartureLine()}>{departureLine === preferredLine ? 'この路線を記憶済み' : 'この路線を覚える'}</button>{preferredLine && <><span>いつもの路線：{LINES.find(line => line.id === preferredLine)?.name}</span><button aria-label="いつもの路線の記憶を解除" onClick={() => rememberDepartureLine(true)}>解除</button></>}</div>
-      <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
+      <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}{progress && <span className="departure-progress" title="時刻表を再現する時計に連動。実際の遅延は未反映。">{progress} · 再現時計{clock.paused ? ' · 停止中' : ''}</span>}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
       {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{[['above','上から'],['side','横から']].map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
       {watchedToday && follow && <div className="departure-angles departure-lights" role="group" aria-label="発車の光"><span>{daylightCycle ? '発車の光 · 自動巡回中' : '発車の光'}</span><div>{[['day','昼'],['evening','夕'],['night','夜']].map(([value,label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectDepartureLight(value)}>{label}</button>)}</div><small>時計はそのまま</small></div>}
       {watchedToday && follow && <button className="departure-rewind" disabled={rewindDeparture(events, watchedToday, now, parseJapanDateTime(watchedToday.date, '03:00:00')) === null} title="同じ発車を5秒戻します。発車5秒前または運行日の開始まで。速度と停止状態はそのまま。" onClick={rewindWatchedDeparture}>5秒戻る ↶</button>}
