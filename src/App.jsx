@@ -1,3 +1,4 @@
+import { DEPARTURE_ANGLES } from './departure-angle.mjs';
 import { drawDeparture } from './departure-draw.mjs';
 import { readPreferredLine, savePreferredLine, clearPreferredLine } from './preferred-line.mjs';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -466,6 +467,7 @@ export default function App() {
     setWatchedDeparture({ ...event, date: serviceContext(event.at, data).date });
     setFollow(Boolean(engine.current?.watchDeparture(event)));
     engine.current?.setDepartureAngle(angle);
+    setDepartureAngle(angle);
     setFollowName(event.lineName); setView(-1);
     trackFeature(replay ? 'departure_replay' : 'departure_watch', { line_id: event.lineId, selected_line: selectedLine });
     notify(`${replay ? 'もう一度：' : ''}${event.time} ${event.lineName}の発車5秒前へ。時計は1倍速です。`);
@@ -607,6 +609,7 @@ export default function App() {
   function openUpdates() { trackFeature('updates_open'); setDialog('updates'); }
   function tryUpdate(action, id) {
     trackFeature('updates_try', { release_id: id, feature: action });
+    if (action === 'departure-front') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);selectDepartureAngle('front');}else if(departureToWatch)showDeparture(departureToWatch,false,'front'); return; }
     if (action === 'departure-progress') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); return; }
     if (action === 'departure-compact') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); setDepartureCompact(true); return; }
     if (action === 'departure-rewind') { if(watchedToday && follow){setDialog(null);setMenusHidden(true);}else watchDeparture(); return; }
@@ -666,7 +669,7 @@ export default function App() {
       <div className="departure-heading"><label className="departure-line" htmlFor="departure-line"><span>見たい路線</span><select id="departure-line" value={departureLine} onChange={event=>{setDepartureLine(event.target.value);trackFeature('departure_line_select',{line_id:event.target.value});}}><option value="all">すべての路線</option>{LINES.map(line=><option key={line.id} value={line.id}>{line.name}</option>)}</select></label><button className="departure-bookmarks-entry" onClick={openDepartureBookmarks}>発車のしおり</button></div>
       <div className="preferred-line"><button disabled={!ready || !context.supported || !events.some(event => event.at > Math.max(now, watchedToday?.at ?? -Infinity))} title="全路線から次の発車をおまかせ。いつもの路線の保存は変えません。" onClick={drawNextDeparture}>全路線から発車くじ ◇</button><button disabled={departureLine === 'all' || departureLine === preferredLine} onClick={() => rememberDepartureLine()}>{departureLine === preferredLine ? 'この路線を記憶済み' : 'この路線を覚える'}</button>{preferredLine && <><span>いつもの路線：{LINES.find(line => line.id === preferredLine)?.name}</span><button aria-label="いつもの路線の記憶を解除" onClick={() => rememberDepartureLine(true)}>解除</button></>}</div>
       <div className="departure-actions"><div><small>{watchedToday ? `${watchedToday.time} ${watchedToday.lineName}を鑑賞` : '時計を発車5秒前へ · 1倍速'}{progress && <span className="departure-progress" title="時刻表を再現する時計に連動。実際の遅延は未反映。">{progress} · 再現時計{clock.paused ? ' · 停止中' : ''}</span>}</small><button disabled={!ready || !departureToWatch} onClick={watchDeparture}>{departureToWatch ? `${watchedToday ? '次の発車へ' : '発車を見に行く'} ▶ ${departureToWatch.time}` : 'この路線の残りの発車なし'}</button>{departureToReplay && <button className="departure-replay" onClick={replayWatchedDeparture} title="今見た列車の発車5秒前へ時計を戻し、1倍速で再生します">今の発車をもう一度 ↺</button>}</div>
-      {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{[['above','上から'],['side','横から']].map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
+      {watchedToday && follow && <div className="departure-angles" role="group" aria-label="発車の視点"><span>発車の視点</span><div>{DEPARTURE_ANGLES.map(([angle,label])=><button key={angle} aria-pressed={departureAngle===angle} onClick={()=>selectDepartureAngle(angle)}>{label}</button>)}</div></div>}
       {watchedToday && follow && <div className="departure-angles departure-lights" role="group" aria-label="発車の光"><span>{daylightCycle ? '発車の光 · 自動巡回中' : '発車の光'}</span><div>{[['day','昼'],['evening','夕'],['night','夜']].map(([value,label]) => <button key={value} aria-pressed={!daylightCycle && period === value} onClick={() => selectDepartureLight(value)}>{label}</button>)}</div><small>時計はそのまま</small></div>}
       {watchedToday && follow && <button className="departure-rewind" disabled={rewindDeparture(events, watchedToday, now, parseJapanDateTime(watchedToday.date, '03:00:00')) === null} title="同じ発車を5秒戻します。発車5秒前または運行日の開始まで。速度と停止状態はそのまま。" onClick={rewindWatchedDeparture}>5秒戻る ↶</button>}
       {watchedToday && follow && <button className="departure-slow" aria-label={clock.speed === 0.5 ? '発車を1倍速に戻す' : '発車を0.5倍速で鑑賞'} aria-pressed={clock.speed === 0.5} title="すべての列車と時計の速度を0.5倍／1倍に切替。一時停止中も変更できます。" onClick={toggleDepartureSlow}>{clock.speed === 0.5 ? '等速に戻す 1×' : 'ゆっくり 0.5×'}</button>}
@@ -725,7 +728,7 @@ export default function App() {
       <ul className="departure-bookmark-list">{departureBookmarks.map(hash => {
         const saved = parseDepartureLink(hash), time = japanTime(saved.at), line = LINES.find(line => line.id === saved.lineId);
         const title = `${time.date} ${time.time.slice(0,5)} ${line.name}`;
-        const presentation = `${saved.angle === 'side' ? '横から' : '上から'} · ${Number.isInteger(saved.light) ? ['昼','夕','夜'][saved.light] : '保存した光'}`;
+        const presentation = `${DEPARTURE_ANGLES.find(([id]) => id === saved.angle)?.[1]} · ${Number.isInteger(saved.light) ? ['昼','夕','夜'][saved.light] : '保存した光'}`;
         return <li key={hash}><button className="departure-bookmark-open" onClick={() => openSavedDeparture(hash)}><strong>{title}</strong><span>{presentation} → 再生へ</span></button><button className="departure-bookmark-delete" aria-label={`${title} ${presentation}のしおりを削除`} onClick={() => removeSavedDeparture(hash)}>削除</button></li>;
       })}</ul>
       {!departureBookmarks.length && <p className="empty-state">保存した発車はまだありません。</p>}
@@ -743,7 +746,7 @@ export default function App() {
       <button className="scene-link-copy" onClick={copySceneLink}>{linkCopied ? 'コピーしました ✓' : 'リンクをコピー'}</button>
       <p role="status" className="data-note">{linkCopied ? '発車のリンクをコピーしました。' : 'コピーできない場合は、リンク欄を選択してコピーできます。'}</p>
       <a className="scene-link-preview" href={sceneLink} target="_blank" rel="noreferrer">この発車のリンクを開く ↗</a>
-      <p className="data-note">視点は「上から / 横から」の選択を保存。手動で動かした角度は含みません。収録時刻表による再現で、将来その月のデータを取得できない場合は再生できません。</p>
+      <p className="data-note">視点は「上から / 横から / 前から」の選択を保存。手動で動かした角度は含みません。収録時刻表による再現で、将来その月のデータを取得できない場合は再生できません。</p>
     </Modal>}
     {dialog === 'station-bookmarks' && <Modal title="近景のしおり" onClose={() => setDialog(null)}>
       <p>屋根・ドームの開始位置と光を、このブラウザに5件まで保存。時計は変えずに眺め直せます。ドラッグした角度は含まず、別端末とは同期しません。</p>

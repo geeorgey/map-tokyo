@@ -23,3 +23,8 @@ test('storage errors propagate instead of reporting successful persistence', () 
   const s={getItem:()=>null,setItem:()=>{throw new Error('quota');}};
   assert.throws(()=>save(s,hash),/quota/); assert.throws(()=>remove(s,hash),/quota/);
 });
+
+test('front viewpoint survives link validation and bookmark reload alongside older views', () => {
+  const s=storage(), front=hash.replace('side','front');save(s,hash);save(s,front);
+  assert.deepEqual(read(s),[front,hash]);
+});

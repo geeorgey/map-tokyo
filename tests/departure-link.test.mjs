@@ -32,3 +32,9 @@ test('after-midnight link resolves the previous operating day including month bo
   const choice={at:late.at,lineId:late.lineId,angle:'above',light:0};
   assert.equal(resolveDepartureLink(data,parseDepartureLink(new URL(makeDepartureLink('https://train.lvnsk.jp',choice)).hash)).id,late.id);
 });
+
+test('front departure link resolves the same timetable event with its selected light', () => {
+  const choice={at:chosen.at,lineId:chosen.lineId,angle:'front',light:2};
+  const parsed=parseDepartureLink(new URL(makeDepartureLink('https://train.lvnsk.jp',choice)).hash);
+  assert.deepEqual(parsed,choice);assert.equal(resolveDepartureLink(data,parsed).id,chosen.id);
+});

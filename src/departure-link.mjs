@@ -1,3 +1,4 @@
+import { DEPARTURE_ANGLES } from './departure-angle.mjs';
 import { LINES } from './timetable.mjs';
 import { eventsForDay } from './schedule.mjs';
 
@@ -9,7 +10,7 @@ export function parseDepartureLink(hash) {
   if (version !== '1' || extra.length || !/^\d{13}$/.test(timestamp || '') || !phase?.trim()) return null;
   const at = Number(timestamp), light = Number(phase);
   if (at < Date.parse('2020-01-01') || at >= Date.parse('2100-01-01') ||
-      !LINES.some(line => line.id === lineId) || !['above', 'side'].includes(angle) ||
+      !LINES.some(line => line.id === lineId) || !DEPARTURE_ANGLES.some(([id]) => id === angle) ||
       !Number.isFinite(light) || light < 0 || light >= 3) return null;
   return { at, lineId, angle, light };
 }

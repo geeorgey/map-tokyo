@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import { departureOffset } from './departure-angle.mjs';
 import { Viewer as DioramaBase } from './engine/viewer.js';
 import { samplePolyline as sampleRoute } from './engine/urban.js';
 import { createEnvelope, trainState } from './schedule.mjs';
@@ -38,11 +39,10 @@ export class ScheduledDiorama extends DioramaBase {
   }
   setDepartureAngle(angle) {
     const car = this.followTrain?.cars[0];
-    if (!this.followCamera.active || !car?.visible || !['above', 'side'].includes(angle)) return false;
-    // The side preset follows the car's orientation at selection; ordinary orbit stays available.
-    const offset = angle === 'side'
-      ? new Vector3(-42, 18, -24).applyQuaternion(car.quaternion)
-      : new Vector3(-8, 80, -24);
+    if (!this.followCamera.active || !car?.visible) return false;
+    // Relative presets use the car orientation at selection; manual orbit remains available.
+    const offset = departureOffset(angle, car.quaternion);
+    if (!offset) return false;
     this.clearOrbitMomentum();
     this.followCamera.start(car.position, performance.now(), matchMedia('(prefers-reduced-motion: reduce)').matches, offset);
     return true;
